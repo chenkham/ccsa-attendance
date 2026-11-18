@@ -11,10 +11,11 @@ class ApiService {
   ApiService._();
   static final ApiService instance = ApiService._();
 
-  // Hostinger backend API base URLs (supports both endpoints/ and api/ folders)
+  // Hostinger backend API base URL
+  // VERIFIED LIVE (curl 200 + real DB responses): /endpoints
+  // /src/endpoints and /api both return 404 on the live server.
   static const List<String> _baseUrls = [
     'https://ccsdu.in/endpoints',
-    'https://ccsdu.in/api',
   ];
 
   static const Duration _timeout = Duration(seconds: 20);
@@ -230,6 +231,7 @@ class ApiService {
       'geofence_lat': subject.latitude,
       'geofence_lng': subject.longitude,
       'geofence_radius': subject.radiusMeters,
+      'geofence_enabled': subject.geofenceEnabled ? 1 : 0,
       'enrolled_student_ids': subject.enrolledStudentIds,
     });
 
@@ -349,7 +351,10 @@ class ApiService {
         if (data['success'] == true && data['subjects'] is List) {
           final list = (data['subjects'] as List).map((s) {
             final map = s as Map<String, dynamic>;
-            final enrolledIds = (map['enrolled_student_ids'] as List?)?.cast<String>() ?? [];
+            final enrolledIds = (map['enrolled_student_ids'] as List?)
+                    ?.map((e) => e.toString())
+                    .toList() ??
+                [];
             return Subject.fromMap(map, studentIds: enrolledIds);
           }).toList();
           return list;
@@ -393,7 +398,10 @@ class ApiService {
         if (data['success'] == true && data['subjects'] is List) {
           final list = (data['subjects'] as List).map((s) {
             final map = s as Map<String, dynamic>;
-            final enrolledIds = (map['enrolled_student_ids'] as List?)?.cast<String>() ?? [];
+            final enrolledIds = (map['enrolled_student_ids'] as List?)
+                    ?.map((e) => e.toString())
+                    .toList() ??
+                [];
             return Subject.fromMap(map, studentIds: enrolledIds);
           }).toList();
           return list;
@@ -422,7 +430,13 @@ class ApiService {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['success'] == true && data['sessions'] is List) {
           final list = (data['sessions'] as List).map((s) {
-            return AttendanceSession.fromMap(s as Map<String, dynamic>);
+            final map = s as Map<String, dynamic>;
+            // Records enable per-student roster computation on Subject Details
+            final records = (map['records'] as List?)
+                    ?.map((r) => AttendanceRecord.fromMap(Map<String, dynamic>.from(r as Map)))
+                    .toList() ??
+                const <AttendanceRecord>[];
+            return AttendanceSession.fromMap(map, records: records);
           }).toList();
           return list;
         }
@@ -435,6 +449,24 @@ class ApiService {
   Future<bool> deleteSubject(String subjectId) async {
     final response = await _postToCloud('delete_subject.php', {
       'subject_id': subjectId,
+    });
+
+    if (response != null) {
+      try {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['success'] == true;
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  /// 14b. Delete attendance sessions for a subject matching an id prefix.
+  /// Used by the physical-register baseline import so a re-import REPLACES
+  /// the previous baseline instead of duplicating historical sessions.
+  Future<bool> deleteSubjectSessions(String subjectId, String idPrefix) async {
+    final response = await _postToCloud('delete_subject_sessions.php', {
+      'subject_id': subjectId,
+      'id_prefix': idPrefix,
     });
 
     if (response != null) {
@@ -472,7 +504,7 @@ class ApiService {
       'marked_by': markedBy,
     });
 
-    if (response != null) {
+    if (response != null && response.statusCode == 200) {
       try {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         return data['success'] == true;
@@ -482,7 +514,9 @@ class ApiService {
   }
 
   /// 16. Get Live Turnout for Active QR Session in Hostinger MySQL
-  Future<List<String>> getSessionTurnoutLive(String sessionId) async {
+  /// Returns one row per UNIQUE student marked present (NOT aggregated
+  /// identifiers — counting those inflated turnout like 3/2 for one scan).
+  Future<List<Map<String, dynamic>>> getSessionTurnoutLive(String sessionId) async {
     final response = await _getFromCloud(
       'get_session_turnout.php',
       'session_id=${Uri.encodeComponent(sessionId)}',
@@ -491,8 +525,17 @@ class ApiService {
     if (response != null) {
       try {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        if (data['success'] == true && data['present_student_ids'] is List) {
-          return (data['present_student_ids'] as List).cast<String>();
+        if (data['success'] == true) {
+          if (data['present_students'] is List) {
+            return (data['present_students'] as List)
+                .map((st) => Map<String, dynamic>.from(st as Map))
+                .toList();
+          }
+          if (data['present_student_ids'] is List) {
+            return (data['present_student_ids'] as List)
+                .map((id) => {'student_id': id.toString()})
+                .toList();
+          }
         }
       } catch (_) {}
     }
@@ -522,5 +565,23 @@ class ApiService {
       'success': false,
       'message': 'Failed to connect to server. Please check your internet connection.',
     };
+  }
+
+  /// 18. Fetch Session Details & Student Attendance Records from Hostinger MySQL
+  Future<Map<String, dynamic>?> getSessionDetails(String sessionId) async {
+    final response = await _getFromCloud(
+      'get_session_details.php',
+      'session_id=${Uri.encodeComponent(sessionId.trim())}',
+    );
+
+    if (response != null) {
+      try {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['success'] == true) {
+          return data;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 }

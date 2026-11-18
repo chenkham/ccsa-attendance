@@ -12,9 +12,11 @@ import '../../services/auth_service.dart';
 import '../../services/csv_export_service.dart';
 import '../../services/location_service.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/custom_cards.dart';
-import '../../widgets/dynamic_qr_display.dart';
 import '../../widgets/marquee_text.dart';
+import '../../widgets/custom_cards.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/dynamic_qr_display.dart';
+import '../../widgets/micro_interactions.dart';
 import '../../widgets/responsive_layout.dart';
 
 class DynamicQrSessionPage extends StatefulWidget {
@@ -36,7 +38,10 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
   late double _radiusMeters;
 
   List<Student> _enrolledStudents = [];
-  final Set<String> _presentStudentIds = {};
+  final Set<String> _presentStudentIds = {}; // identifiers (id/roll/name) for marking state
+  final Set<String> _presentStudentKeys = {}; // unique student keys for accurate count
+  int _livePresentCount = 0;
+  bool _allowPop = false; // set true when finishing/cancel so PopScope lets us leave
   Timer? _dbPollTimer;
   bool _isLoading = true;
 
@@ -51,8 +56,8 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
 
     _loadEnrolledStudents();
 
-    // Poll local database every 1.5 seconds for student check-ins
-    _dbPollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+    // Poll cloud every 800ms — the teacher needs near-instant turnout feedback
+    _dbPollTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
       _pollLiveAttendees();
     });
   }
@@ -68,22 +73,27 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
     List<Student> list = [];
 
     try {
-      try {
-        list = await DatabaseHelper.instance.getStudentsForSubject(widget.subject.id);
-      } catch (_) {}
-
-      if (list.isEmpty) {
-        final cloudStds = await ApiService.instance.getRegisteredStudents(
-          course: widget.subject.course,
-          semester: widget.subject.semester,
-        );
-        if (cloudStds.isNotEmpty) {
-          final enrolledSet = widget.subject.enrolledStudentIds.toSet();
-          if (enrolledSet.isNotEmpty) {
-            list = cloudStds.where((s) => enrolledSet.contains(s.id)).toList();
-          }
-          if (list.isEmpty) list = cloudStds;
+      // Cloud-first: the local cache can be stale (e.g. wiped by reinstall or
+      // enrollment changed on another device), which caused "2 enrolled but
+      // session shows 1". The cloud roster filtered by the subject's enrolled
+      // ids is authoritative.
+      final cloudStds = await ApiService.instance.getRegisteredStudents(
+        course: widget.subject.course,
+        semester: widget.subject.semester,
+      );
+      if (cloudStds.isNotEmpty) {
+        final enrolledSet = widget.subject.enrolledStudentIds.toSet();
+        if (enrolledSet.isNotEmpty) {
+          list = cloudStds.where((s) => enrolledSet.contains(s.id)).toList();
         }
+        if (list.isEmpty) list = cloudStds;
+      }
+
+      // Local fallback only when the cloud is unreachable
+      if (list.isEmpty) {
+        try {
+          list = await DatabaseHelper.instance.getStudentsForSubject(widget.subject.id);
+        } catch (_) {}
       }
     } catch (e) {
       debugPrint('Error loading students for QR: $e');
@@ -98,34 +108,38 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
   }
 
   Future<void> _pollLiveAttendees() async {
-    final Set<String> newPresentIds = {};
-
+    // Poll live scans DIRECTLY from Hostinger MySQL Cloud (Single Source of Truth).
+    // Count UNIQUE students (one row per record) — never aggregate identifiers,
+    // which inflated turnout (3/2 for a single scan).
     try {
-      final db = await DatabaseHelper.instance.database;
-      final records = await db.query(
-        'attendance_records',
-        where: 'session_id = ?',
-        whereArgs: [_sessionId],
-      );
-      for (final r in records) {
-        newPresentIds.add(r['student_id'] as String);
+      final rows = await ApiService.instance.getSessionTurnoutLive(_sessionId);
+      if (mounted && rows.isNotEmpty) {
+        final identifiers = <String>{};
+        final keys = <String>{};
+        for (final row in rows) {
+          final sid = row['student_id']?.toString() ?? '';
+          final sroll = row['student_roll_no']?.toString() ?? '';
+          final sname = row['student_name']?.toString() ?? '';
+          if (sid.isNotEmpty) {
+            identifiers.add(sid);
+            keys.add('id:$sid');
+          } else if (sroll.isNotEmpty) {
+            identifiers.add(sroll);
+            keys.add('roll:$sroll');
+          } else if (sname.isNotEmpty) {
+            identifiers.add(sname.toLowerCase());
+            keys.add('name:${sname.toLowerCase()}');
+          }
+        }
+        final changed = keys.length != _presentStudentKeys.length;
+        setState(() {
+          _presentStudentIds.addAll(identifiers);
+          _presentStudentKeys.addAll(keys);
+          _livePresentCount = _presentStudentKeys.length;
+        });
+        if (changed) AppTheme.triggerLightHaptic();
       }
     } catch (_) {}
-
-    // Poll live student scans from Hostinger MySQL
-    try {
-      final cloudLiveIds = await ApiService.instance.getSessionTurnoutLive(_sessionId);
-      newPresentIds.addAll(cloudLiveIds);
-    } catch (_) {}
-
-    if (mounted && newPresentIds.isNotEmpty) {
-      if (newPresentIds.length != _presentStudentIds.length) {
-        AppTheme.triggerLightHaptic();
-      }
-      setState(() {
-        _presentStudentIds.addAll(newPresentIds);
-      });
-    }
   }
 
   Future<void> _markStudentPresentManually(Student student) async {
@@ -134,23 +148,12 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
     AppTheme.triggerSuccessHaptic();
     setState(() {
       _presentStudentIds.add(student.id);
+      _presentStudentKeys.add('id:${student.id}');
+      _livePresentCount = _presentStudentKeys.length;
     });
 
-    final record = AttendanceRecord(
-      id: const Uuid().v4(),
-      sessionId: _sessionId,
-      studentId: student.id,
-      studentRollNo: student.classRollNo,
-      studentName: student.name,
-      status: 'present',
-      markedBy: 'manual_teacher',
-    );
-
-    final db = await DatabaseHelper.instance.database;
-    await db.insert('attendance_records', record.toMap());
-
-    // Also push manual mark to Cloud
-    ApiService.instance.recordStudentAttendanceLive(
+    // Write manual mark directly to Cloud Database
+    final success = await ApiService.instance.recordStudentAttendanceLive(
       sessionId: _sessionId,
       studentId: student.id,
       email: student.email ?? '',
@@ -162,6 +165,22 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
       teacherEmail: widget.subject.teacherEmail,
       markedBy: 'manual_teacher',
     );
+
+    if (success) {
+      final record = AttendanceRecord(
+        id: const Uuid().v4(),
+        sessionId: _sessionId,
+        studentId: student.id,
+        studentRollNo: student.classRollNo,
+        studentName: student.name,
+        status: 'present',
+        markedBy: 'manual_teacher',
+      );
+      try {
+        final db = await DatabaseHelper.instance.database;
+        await db.insert('attendance_records', record.toMap());
+      } catch (_) {}
+    }
   }
 
   void _showManualAttendanceDialog() {
@@ -171,7 +190,7 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTheme.bgLight,
       builder: (bCtx) => StatefulBuilder(
         builder: (context, setModalState) {
           final filtered = _enrolledStudents.where((s) {
@@ -246,7 +265,10 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
                     separatorBuilder: (_, __) => const Divider(height: 1, color: AppTheme.borderLight),
                     itemBuilder: (context, index) {
                       final s = filtered[index];
-                      final isMarked = _presentStudentIds.contains(s.id);
+                      final isMarked = _presentStudentIds.contains(s.id) ||
+                          (s.classRollNo.isNotEmpty && _presentStudentIds.contains(s.classRollNo)) ||
+                          (s.name.isNotEmpty && _presentStudentIds.contains(s.name.toLowerCase())) ||
+                          (s.email != null && s.email!.isNotEmpty && _presentStudentIds.contains(s.email!.toLowerCase()));
                       final rollNo = s.classRollNo.isNotEmpty ? s.classRollNo : '${index + 1}';
 
                       return ListTile(
@@ -299,8 +321,52 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
     AppTheme.triggerSuccessHaptic();
 
     final user = AuthService.instance.currentUser;
-    final totalTurnout = _presentStudentIds.length;
-    final totalStudents = _enrolledStudents.length;
+
+    final List<AttendanceRecord> records = [];
+    final Set<String> handledPresentIds = {};
+
+    bool isStudentPresent(Student std) {
+      for (final pid in _presentStudentIds) {
+        if (pid == std.id || 
+            (std.email != null && std.email!.isNotEmpty && pid.toLowerCase() == std.email!.toLowerCase()) ||
+            (std.classRollNo.isNotEmpty && pid == std.classRollNo)) {
+          handledPresentIds.add(pid);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    for (final student in _enrolledStudents) {
+      final isPresent = isStudentPresent(student);
+      records.add(AttendanceRecord(
+        id: const Uuid().v4(),
+        sessionId: _sessionId,
+        studentId: student.id,
+        studentRollNo: student.classRollNo,
+        studentName: student.name,
+        status: isPresent ? 'present' : 'absent',
+        markedBy: isPresent ? 'totp_qr' : 'system',
+      ));
+    }
+
+    // Also include any present IDs that weren't matched in _enrolledStudents
+    for (final id in _presentStudentIds) {
+      if (!handledPresentIds.contains(id)) {
+        records.add(AttendanceRecord(
+          id: const Uuid().v4(),
+          sessionId: _sessionId,
+          studentId: id,
+          studentRollNo: '',
+          studentName: 'Student',
+          status: 'present',
+          markedBy: 'totp_qr',
+        ));
+      }
+    }
+
+    final realPresentCount = records.where((r) => r.status == 'present').length;
+    final realEnrolledCount = records.length;
 
     final session = AttendanceSession(
       id: _sessionId,
@@ -309,50 +375,57 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
       subjectName: widget.subject.name,
       teacherEmail: user?.email ?? 'faculty@ccsa.du.ac.in',
       sessionDate: DateTime.now(),
-      totalPresent: totalTurnout,
-      totalEnrolled: totalStudents,
+      totalPresent: realPresentCount,
+      totalEnrolled: realEnrolledCount,
       isLab: _isLab,
     );
 
-    final List<AttendanceRecord> records = [];
-
-    for (final id in _presentStudentIds) {
-      final std = _enrolledStudents.firstWhere((s) => s.id == id, orElse: () => Student(id: id, name: 'Student', classRollNo: '', duExamRollNo: '', email: '', course: '', semester: 1));
-      records.add(AttendanceRecord(
-        id: const Uuid().v4(),
-        sessionId: _sessionId,
-        studentId: id,
-        studentRollNo: std.classRollNo,
-        studentName: std.name,
-        status: 'present',
-        markedBy: 'totp_qr',
-      ));
-    }
-
-    for (final student in _enrolledStudents) {
-      if (!_presentStudentIds.contains(student.id)) {
-        records.add(AttendanceRecord(
-          id: const Uuid().v4(),
-          sessionId: _sessionId,
-          studentId: student.id,
-          studentRollNo: student.classRollNo,
-          studentName: student.name,
-          status: 'absent',
-          markedBy: 'system',
-        ));
-      }
-    }
-
+    // Save session and records to Hostinger MySQL Database FIRST (Single Source of Truth)
+    bool cloudSaved = false;
     try {
-      await DatabaseHelper.instance.insertAttendanceSession(session, records);
-    } catch (_) {}
-
-    // Sync session and records to Hostinger MySQL Database (Item 3)
-    try {
-      await ApiService.instance.syncAttendanceSession(session, records);
+      cloudSaved = await ApiService.instance.syncAttendanceSession(session, records);
     } catch (e) {
       debugPrint('Sync attendance session cloud error: $e');
     }
+
+    if (!cloudSaved) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: AppTheme.cardRadius),
+            title: const Row(
+              children: [
+                Icon(LucideIcons.cloudOff, color: AppTheme.crimsonRose, size: 24),
+                SizedBox(width: 10),
+                Text('Cloud Save Failed'),
+              ],
+            ),
+            content: Text(
+              'Could not save this session to the central university database. Please check your internet connection and tap Retry Save.',
+              style: GoogleFonts.inter(fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.royalNavy),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _finishAndSaveSession();
+                },
+                child: const Text('Retry Save'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    // Only cache to local database after confirmed success in online cloud database
+    try {
+      await DatabaseHelper.instance.insertAttendanceSession(session, records);
+    } catch (_) {}
 
     if (mounted) {
       showDialog(
@@ -414,6 +487,7 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
               onPressed: () {
                 Navigator.pop(ctx);
                 CsvExportService.instance.exportSubjectCsv(widget.subject);
+                _allowPop = true;
                 Navigator.pop(context, true);
               },
             ),
@@ -421,6 +495,7 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
               style: ElevatedButton.styleFrom(backgroundColor: AppTheme.royalNavy, shape: RoundedRectangleBorder(borderRadius: AppTheme.pillRadius)),
               onPressed: () {
                 Navigator.pop(ctx);
+                _allowPop = true;
                 Navigator.pop(context, true);
               },
               child: const Text('Done'),
@@ -433,40 +508,103 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
 
   @override
   Widget build(BuildContext context) {
-    final presentCount = _presentStudentIds.length;
+    // UNIQUE students present (never exceeds enrolled — can't show 3/2)
+    final presentCount = _livePresentCount.clamp(0, _enrolledStudents.isEmpty ? _livePresentCount : _enrolledStudents.length);
     final totalCount = _enrolledStudents.length;
     final isWide = Responsive.isWide(context);
 
     // Full Screen QR Presentation Mode
     if (_isFullScreen) {
-      return Scaffold(
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          setState(() => _isFullScreen = false); // system back = leave presentation mode
+        },
+        child: Scaffold(
         backgroundColor: const Color(0xFF0F172A),
         body: SafeArea(
           child: Stack(
             children: [
+              // Subtle doodle pattern backdrop
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(painter: DoodlePatternPainter(ink: Colors.white, opacity: 0.05, seed: 29)),
+                ),
+              ),
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // LIVE pulse indicator
+                        PulseGlow(
+                          glowColor: AppTheme.crimsonRose,
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(color: AppTheme.crimsonRose, shape: BoxShape.circle),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'LIVE SESSION',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2.4,
+                            color: Colors.white.withOpacity(0.65),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     Text(
                       widget.subject.name,
-                      style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Present: $presentCount / $totalCount (${totalCount > 0 ? ((presentCount / totalCount) * 100).toStringAsFixed(0) : 0}%)',
-                      style: GoogleFonts.inter(fontSize: 15, color: AppTheme.emeraldGreen, fontWeight: FontWeight.w700),
+                      style: GoogleFonts.plusJakartaSans(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                     const SizedBox(height: 28),
-                    DynamicQrDisplay(
-                      subjectId: widget.subject.id,
-                      sessionId: _sessionId,
-                      size: isWide ? 340 : 280,
-                      isBigScreen: true,
-                      geofenceEnabled: _geofenceEnabled,
-                      targetLat: _targetLat,
-                      targetLng: _targetLng,
-                      radiusMeters: _radiusMeters,
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: [
+                          BoxShadow(color: AppTheme.googleBlue.withOpacity(0.25), blurRadius: 48, spreadRadius: 2),
+                        ],
+                      ),
+                      child: DynamicQrDisplay(
+                        subjectId: widget.subject.id,
+                        sessionId: _sessionId,
+                        size: isWide ? 300 : 250,
+                        isBigScreen: true,
+                        geofenceEnabled: _geofenceEnabled,
+                        targetLat: _targetLat,
+                        targetLng: _targetLng,
+                        radiusMeters: _radiusMeters,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(40),
+                        border: Border.all(color: Colors.white.withOpacity(0.14)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(LucideIcons.userCheck, size: 16, color: AppTheme.emeraldGreen),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Present: $presentCount / $totalCount (${totalCount > 0 ? (((presentCount / totalCount) * 100).clamp(0, 100)).toStringAsFixed(0) : 0}%)',
+                            style: GoogleFonts.inter(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -474,18 +612,28 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
               Positioned(
                 top: 16,
                 right: 16,
-                child: IconButton(
-                  icon: const Icon(LucideIcons.x, color: Colors.white, size: 28),
+                child: IconButton.filledTonal(
+                  icon: const Icon(LucideIcons.x, color: Colors.white, size: 24),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withOpacity(0.12),
+                  ),
                   onPressed: () => setState(() => _isFullScreen = false),
                 ),
               ),
             ],
           ),
         ),
+      ),
       );
     }
 
-    return Scaffold(
+    return PopScope(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _showExitChoiceDialog();
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.bgLight,
       appBar: AppBar(
         title: Column(
@@ -522,7 +670,7 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.royalNavy))
+          ? const Center(child: BrandLoader(message: 'Preparing session…', size: 44))
           : AdaptiveContainer(
               maxWidth: 960,
               child: isWide
@@ -567,6 +715,8 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
                                 isPrimary: false,
                                 onPressed: _showManualAttendanceDialog,
                               ),
+                              const SizedBox(height: 12),
+                              _buildCancelSessionButton(),
                             ],
                           ),
                         ),
@@ -594,15 +744,186 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
                             icon: LucideIcons.checkCheck,
                             onPressed: _finishAndSaveSession,
                           ),
+                          const SizedBox(height: 12),
+                          _buildCancelSessionButton(),
                           const SizedBox(height: 20),
                         ],
                       ),
                     ),
             ),
+      ),
+    );
+  }
+
+  /// Back-press (or app-bar back) during a live session: force an explicit
+  /// decision — silently abandoning the page would leave the session live in
+  /// the cloud with scans (phantom class on the student side).
+  Future<void> _showExitChoiceDialog() async {
+    AppTheme.triggerLightHaptic();
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: AppTheme.amberWarningBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(LucideIcons.alertTriangle, color: Color(0xFFB45309), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Session is still live',
+                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'What would you like to do with this session?',
+          style: GoogleFonts.inter(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'stay'),
+            child: const Text('Stay', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('Cancel Session', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.crimsonRose)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.royalNavy,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            child: const Text('Save & Exit', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    if (choice == 'save') {
+      await _finishAndSaveSession();
+    } else if (choice == 'cancel') {
+      await _cancelSession();
+    }
+  }
+
+  /// Cancel (discard) the session without saving anything.
+  Future<void> _cancelSession() async {
+    AppTheme.triggerLightHaptic();
+    final markedCount = _presentStudentKeys.length;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: AppTheme.crimsonRoseBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(LucideIcons.xCircle, color: AppTheme.crimsonRose, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Cancel Session?',
+                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 17),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          markedCount > 0
+              ? '$markedCount student(s) already scanned. If you cancel now, this session and all its scans will be discarded — nothing will be saved to the database.'
+              : 'This session will be discarded. Nothing will be saved to the database.',
+          style: GoogleFonts.inter(fontSize: 13, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep Session', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.crimsonRose,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel Session', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      _dbPollTimer?.cancel();
+
+      // Purge the session everywhere: scans are written to the cloud in real
+      // time (for live turnout), so a cancelled session must be removed from
+      // the cloud too — otherwise students see a phantom class forever.
+      try {
+        await ApiService.instance.deleteSubjectSessions(widget.subject.id, _sessionId);
+      } catch (e) {
+        debugPrint('Cloud cancel-purge skipped: $e');
+      }
+      try {
+        final db = await DatabaseHelper.instance.database;
+        await db.delete('attendance_records', where: 'session_id = ?', whereArgs: [_sessionId]);
+        await db.delete('attendance_sessions', where: 'id = ?', whereArgs: [_sessionId]);
+      } catch (_) {}
+
+      if (mounted) {
+        _allowPop = true;
+        Navigator.pop(context, false); // discard — nothing was saved
+      }
+    }
+  }
+
+  Widget _buildCancelSessionButton() {
+    return PressableScale(
+      onTap: _cancelSession,
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: AppTheme.pillRadius,
+          border: Border.all(color: AppTheme.crimsonRoseBorder, width: 1.3),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.xCircle, size: 18, color: AppTheme.crimsonRose),
+            SizedBox(width: 9),
+            Text(
+              'Cancel Session',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.crimsonRose,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildTurnoutCard(int presentCount, int totalCount) {
+    final double turnoutPct = totalCount > 0 ? (presentCount / totalCount).clamp(0.0, 1.0) : 0.0;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -611,32 +932,79 @@ class _DynamicQrSessionPageState extends State<DynamicQrSessionPage> {
         border: Border.all(color: AppTheme.borderLight, width: 1.0),
         boxShadow: AppTheme.softShadow,
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          Column(
+          Row(
             children: [
-              Text('Enrolled', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
-              const SizedBox(height: 2),
-              Text('$totalCount', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.royalNavy)),
-            ],
-          ),
-          Container(width: 1, height: 36, color: AppTheme.borderLight),
-          Column(
-            children: [
-              Text('Present', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
-              const SizedBox(height: 2),
-              Text('$presentCount', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.emeraldGreen)),
-            ],
-          ),
-          Container(width: 1, height: 36, color: AppTheme.borderLight),
-          Column(
-            children: [
-              Text('Turnout', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
-              const SizedBox(height: 2),
+              // Live breathing dot
+              PulseGlow(
+                glowColor: AppTheme.emeraldGreen,
+                minRadius: 3,
+                maxRadius: 8,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(color: AppTheme.emeraldGreen, shape: BoxShape.circle),
+                ),
+              ),
+              const SizedBox(width: 8),
               Text(
-                '${totalCount > 0 ? ((presentCount / totalCount) * 100).toStringAsFixed(0) : 0}%',
-                style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+                'Live Turnout',
+                style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+              ),
+              const Spacer(),
+              AnimatedCounter(
+                value: turnoutPct * 100,
+                suffix: '%',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: turnoutPct >= 0.75 ? AppTheme.emeraldGreen : AppTheme.royalNavy,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          AnimatedProgressBar(
+            value: turnoutPct.clamp(0.0, 1.0),
+            height: 10,
+            color: AppTheme.emeraldGreen,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Column(
+                children: [
+                  Text('Enrolled', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 2),
+                  AnimatedCounter(
+                    value: totalCount,
+                    style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+                  ),
+                ],
+              ),
+              Container(width: 1, height: 36, color: AppTheme.borderLight),
+              Column(
+                children: [
+                  Text('Present', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 2),
+                  AnimatedCounter(
+                    value: presentCount,
+                    style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.emeraldGreen),
+                  ),
+                ],
+              ),
+              Container(width: 1, height: 36, color: AppTheme.borderLight),
+              Column(
+                children: [
+                  Text('Absent', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 2),
+                  AnimatedCounter(
+                    value: (totalCount - presentCount).clamp(0, totalCount),
+                    style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.crimsonRose),
+                  ),
+                ],
               ),
             ],
           ),

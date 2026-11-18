@@ -35,3 +35,13 @@
 
 # Exceptions to above rules.
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
+
+# Release signing (do not commit)
+android/key.properties
+android/ccsaas-release.jks
+
+# Local scripts & backups
+_patch_reliability.py
+build_artifacts/
+.zcode/
+

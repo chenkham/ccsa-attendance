@@ -7,10 +7,12 @@ import '../../models/subject.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/marquee_text.dart';
 import '../../widgets/attendance_chart.dart';
 import '../../widgets/attendance_gauge.dart';
 import '../../widgets/custom_cards.dart';
-import '../../widgets/marquee_text.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/micro_interactions.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/student_attendance_dialog.dart';
 import '../common/settings_page.dart';
@@ -77,11 +79,20 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
 
     try {
       if (std != null && user != null) {
-        // 1. Fetch enrolled subjects from Hostinger MySQL Cloud
-        subs = await ApiService.instance.getStudentSubjectsFromCloud(
-          email: user.email,
-          studentId: std.id,
-        );
+        // 1+2. Fetch enrolled subjects AND live cloud attendance stats in
+        // parallel from Hostinger MySQL (halves refresh latency)
+        final results = await Future.wait([
+          ApiService.instance.getStudentSubjectsFromCloud(
+            email: user.email,
+            studentId: std.id,
+          ),
+          ApiService.instance.getStudentAttendanceFromCloud(
+            email: user.email,
+            studentId: std.id,
+          ),
+        ]);
+        subs = results[0] as List<Subject>;
+        final cloudData = results[1] as Map<String, dynamic>?;
 
         if (subs.isNotEmpty) {
           // Reconcile local SQLite (safe on mobile/desktop, skipped on web)
@@ -104,12 +115,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
             subs = await DatabaseHelper.instance.getSubjectsForStudent(std.id);
           } catch (_) {}
         }
-
-        // 2. Fetch live cloud attendance statistics directly from Hostinger MySQL
-        final cloudData = await ApiService.instance.getStudentAttendanceFromCloud(
-          email: user.email,
-          studentId: std.id,
-        );
 
         if (cloudData != null && cloudData['stats'] is Map) {
           final cloudStats = cloudData['stats'] as Map<String, dynamic>;
@@ -178,8 +183,6 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
       ),
     );
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +257,12 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     ];
 
     final contentWidget = _isLoading
-        ? const Center(child: CircularProgressIndicator(color: AppTheme.royalNavy))
+        ? const Center(
+            child: BrandLoader(
+              message: 'Fetching your classes…',
+              size: 48,
+            ),
+          )
         : RefreshIndicator(
             onRefresh: _loadStudentData,
             color: AppTheme.royalNavy,
@@ -358,61 +366,25 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                         children: [
                           // Incomplete Profile Alert Banner
                           if (isProfileIncomplete) ...[
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppTheme.amberWarningBg,
-                                borderRadius: AppTheme.cardRadius,
-                                border: Border.all(color: AppTheme.amberWarningBorder, width: 1.2),
-                              ),
-                              child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Icon(LucideIcons.alertCircle, color: Color(0xFFB45309), size: 24),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          MarqueeText(
-                                            text: 'Complete Academic Profile',
-                                            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 13.5, color: const Color(0xFFB45309)),
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            'Fill your Class Roll No and Semester to enable live attendance sync.',
-                                            softWrap: true,
-                                            maxLines: 2,
-                                            style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF92400E)),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFB45309),
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                        shape: RoundedRectangleBorder(borderRadius: AppTheme.pillRadius),
-                                      ),
-                                      onPressed: () async {
-                                        final updated = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()));
-                                        if (updated == true) _loadStudentData();
-                                      },
-                                      child: const Text('Complete', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                                    ),
-                                  ],
-                                ),
+                            StaggeredEntrance(
+                              index: 0,
+                              child: _buildProfileAlertBanner(),
                             ),
                             const SizedBox(height: 16),
                           ],
 
                           // Hero Attendance Overview Card (Classes instead of hours)
-                          _buildHeroAttendanceCard(overallPercentage, totalClassesHeld, totalClassesAttended),
+                          StaggeredEntrance(
+                            index: 1,
+                            child: _buildHeroAttendanceCard(overallPercentage, totalClassesHeld, totalClassesAttended),
+                          ),
                           const SizedBox(height: 20),
 
                           // Quick Actions Bar: Scan, Attendance Logs, Security
-                          _buildQuickActionsRow(context),
+                          StaggeredEntrance(
+                            index: 2,
+                            child: _buildQuickActionsRow(context),
+                          ),
                           const SizedBox(height: 24),
 
                           // Visual Attendance Graph Analytics
@@ -450,11 +422,68 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
+  Widget _buildProfileAlertBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.amberWarningBg,
+        borderRadius: AppTheme.cardRadius,
+        border: Border.all(color: AppTheme.amberWarningBorder, width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(LucideIcons.alertCircle, color: Color(0xFFB45309), size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: MarqueeText(
+                    text: 'Complete Academic Profile',
+                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 13.5, color: const Color(0xFFB45309)),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Fill your Class Roll No and Semester to enable live attendance sync.',
+                  softWrap: true,
+                  maxLines: 2,
+                  style: GoogleFonts.inter(fontSize: 11.5, color: const Color(0xFF92400E)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          PressableScale(
+            onTap: () async {
+              final updated = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()));
+              if (updated == true) _loadStudentData();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFB45309),
+                borderRadius: AppTheme.pillRadius,
+              ),
+              child: const Text(
+                'Complete',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSubjectList() {
     final theme = Theme.of(context);
 
     if (_enrolledSubjects.isEmpty) {
       return const EmptyStateWidget(
+        scene: DoodleScene.openBook,
         icon: LucideIcons.bookOpenCheck,
         title: 'No Enrolled Subjects Yet',
         subtitle: 'When professors create subjects for your semester batch, they will automatically appear here.',
@@ -473,16 +502,13 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
         final int total = stats?['total'] ?? 0;
         final int attended = stats?['attended'] ?? 0;
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            mouseCursor: SystemMouseCursors.click,
+        return StaggeredEntrance(
+          index: index.clamp(0, 8),
+          child: PressableScale(
             onTap: () => _showSubjectDetailModal(subject),
-            borderRadius: AppTheme.cardRadius,
-            splashColor: theme.colorScheme.primary.withOpacity(0.06),
-            hoverColor: theme.colorScheme.primary.withOpacity(0.03),
+            pressedScale: 0.975,
             child: Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: AppTheme.cardRadius,
@@ -492,6 +518,38 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Percentage ring
+                  SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 52,
+                          height: 52,
+                          child: CircularProgressIndicator(
+                            value: (pct / 100).clamp(0.0, 1.0),
+                            strokeWidth: 4.5,
+                            strokeCap: StrokeCap.round,
+                            backgroundColor: AppTheme.borderLight,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              pct >= 80 ? AppTheme.emeraldGreen : AppTheme.crimsonRose,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          pct.toStringAsFixed(0),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: pct >= 80 ? AppTheme.emeraldGreen : AppTheme.crimsonRose,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,11 +578,9 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          subject.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 5),
+                        MarqueeText(
+                          text: subject.name,
                           style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 14.5, color: AppTheme.royalNavy),
                         ),
                         const SizedBox(height: 4),
@@ -537,38 +593,29 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 10),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        '${pct.toStringAsFixed(1)}%',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: pct >= 75 ? AppTheme.emeraldGreen : AppTheme.crimsonRose,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: pct >= 75 ? AppTheme.emeraldGreenBg : AppTheme.crimsonRoseBg,
-                          borderRadius: BorderRadius.circular(6),
+                          color: pct >= 80 ? AppTheme.emeraldGreenBg : AppTheme.crimsonRoseBg,
+                          borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          pct >= 75 ? 'Safe' : 'Shortage',
+                          pct >= 80 ? 'Safe' : 'Shortage',
                           style: TextStyle(
                             fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: pct >= 75 ? AppTheme.emeraldGreen : AppTheme.crimsonRose,
+                            fontWeight: FontWeight.w800,
+                            color: pct >= 80 ? const Color(0xFF047857) : AppTheme.crimsonRose,
                           ),
                         ),
                       ),
+                      const SizedBox(height: 6),
+                      const Icon(LucideIcons.chevronRight, size: 16, color: AppTheme.textMuted),
                     ],
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(LucideIcons.chevronRight, size: 16, color: AppTheme.textSecondary),
                 ],
               ),
             ),
@@ -584,13 +631,14 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     Color statusBgColor;
     Color statusBorderColor;
 
+    // Classification: ≥80% Regular, 70–80% NC (Non-Collegiate), <70% DC (Disqualified)
     if (overallPercentage >= 80.0) {
       statusLabel = 'Regular (≥80%)';
       statusTextColor = const Color(0xFF047857);
       statusBgColor = AppTheme.emeraldGreenBg;
       statusBorderColor = AppTheme.emeraldGreenBorder;
     } else if (overallPercentage >= 70.0) {
-      statusLabel = 'NC (70%-80%)';
+      statusLabel = 'NC (70–80%)';
       statusTextColor = const Color(0xFFB45309);
       statusBgColor = AppTheme.amberWarningBg;
       statusBorderColor = AppTheme.amberWarningBorder;
@@ -602,101 +650,163 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppTheme.cardRadius,
-        border: Border.all(color: AppTheme.borderLight, width: 1.0),
-        boxShadow: AppTheme.softShadow,
+        gradient: AppTheme.heroGradient,
+        borderRadius: AppTheme.heroRadius,
+        boxShadow: AppTheme.heroCardShadow,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MarqueeText(
-                      text: 'Overall Attendance Summary',
-                      style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
-                    ),
-                    const SizedBox(height: 2),
-                    MarqueeText(
-                      text: 'Centre for Computer Science and Applications',
-                      style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textSecondary),
-                    ),
-                  ],
+      child: ClipRRect(
+        borderRadius: AppTheme.heroRadius,
+        child: Stack(
+          children: [
+            // Doodle pattern backdrop
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: DoodlePatternPainter(ink: Colors.white, opacity: 0.07, seed: 33),
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusBgColor,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: statusBorderColor),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: statusTextColor,
+            ),
+            // Sparkle accent
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Overall Attendance',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Centre for Computer Science and Applications',
+                              style: GoogleFonts.inter(
+                                fontSize: 10.5,
+                                color: Colors.white.withOpacity(0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: statusBgColor,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: statusBorderColor),
+                        ),
+                        child: Text(
+                          statusLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: statusTextColor,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
+                  const SizedBox(height: 18),
 
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              AttendanceGauge(
-                percentage: overallPercentage,
-                size: 104,
-                strokeWidth: 9,
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildMetricRow('Total Classes', '$totalClassesHeld', LucideIcons.calendar),
-                    const SizedBox(height: 6),
-                    _buildMetricRow('Classes Attended', '$totalClassesAttended', LucideIcons.checkCircle2, color: AppTheme.emeraldGreen),
-                    const SizedBox(height: 6),
-                    _buildMetricRow('Classes Missed', '${totalClassesHeld - totalClassesAttended}', LucideIcons.xCircle, color: AppTheme.crimsonRose),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // White-ringed gauge
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withOpacity(0.94),
+                        ),
+                        child: AttendanceGauge(
+                          percentage: overallPercentage,
+                          size: 100,
+                          strokeWidth: 8,
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildMetricRow('Total Classes', '$totalClassesHeld', LucideIcons.calendar, Colors.white),
+                            const SizedBox(height: 8),
+                            _buildMetricRow('Classes Attended', '$totalClassesAttended', LucideIcons.checkCircle2, const Color(0xFF7CE8B1)),
+                            const SizedBox(height: 8),
+                            _buildMetricRow('Classes Missed', '${totalClassesHeld - totalClassesAttended}', LucideIcons.xCircle, const Color(0xFFFFAABB)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
 
-          // Primary Dynamic Action Pill: Simply "Scan"
-          GPayActionPill(
-            label: 'Scan',
-            icon: LucideIcons.scanLine,
-            onPressed: () async {
-              final scanned = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const QrScannerPage()),
-              );
-              if (scanned == true) _loadStudentData();
-            },
-          ),
-        ],
+                  // Primary Dynamic Action Pill: Simply "Scan"
+                  PressableScale(
+                    onTap: () async {
+                      final scanned = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const QrScannerPage()),
+                      );
+                      if (scanned == true) _loadStudentData();
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: AppTheme.pillRadius,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.22),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(LucideIcons.scanLine, size: 19, color: AppTheme.royalNavy),
+                          const SizedBox(width: 9),
+                          Text(
+                            'Scan to Mark Attendance',
+                            style: GoogleFonts.inter(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.royalNavy,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildQuickActionsRow(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: AppTheme.cardRadius,
@@ -741,20 +851,30 @@ class _StudentDashboardPageState extends State<StudentDashboardPage> {
     );
   }
 
-  Widget _buildMetricRow(String label, String value, IconData icon, {Color? color}) {
+  Widget _buildMetricRow(String label, String value, IconData icon, Color valueColor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Row(
           children: [
-            Icon(icon, size: 14, color: color ?? AppTheme.textSecondary),
+            Icon(icon, size: 14, color: valueColor),
             const SizedBox(width: 6),
-            Text(label, style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary)),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: Colors.white.withOpacity(0.78),
+              ),
+            ),
           ],
         ),
-        Text(
-          value,
-          style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w700, color: color ?? AppTheme.royalNavy),
+        AnimatedCounter(
+          value: int.tryParse(value) ?? 0,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+            color: valueColor,
+          ),
         ),
       ],
     );

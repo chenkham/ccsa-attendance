@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../theme/app_theme.dart';
+import 'micro_interactions.dart';
 import 'marquee_text.dart';
 
 class AttendanceBarItem {
@@ -30,7 +31,7 @@ class AttendanceChartWidget extends StatelessWidget {
     super.key,
     required this.title,
     required this.items,
-    this.threshold = 75.0,
+    this.threshold = 80.0,
   });
 
   @override
@@ -70,14 +71,18 @@ class AttendanceChartWidget extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: AppTheme.royalNavy.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [AppTheme.googleSky, Color(0xFFC3DAF9)],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(LucideIcons.barChart3, size: 16, color: AppTheme.royalNavy),
+                      child: const Icon(LucideIcons.barChart3, size: 15, color: AppTheme.royalNavy),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: MarqueeText(
                         text: title,
@@ -87,6 +92,30 @@ class AttendanceChartWidget extends StatelessWidget {
                           color: AppTheme.royalNavy,
                         ),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              // Threshold legend
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgLight,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppTheme.borderLight),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(color: AppTheme.emeraldGreen, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Safe ≥ ${threshold.toStringAsFixed(0)}%',
+                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.textSecondary),
                     ),
                   ],
                 ),
@@ -106,64 +135,45 @@ class AttendanceChartWidget extends StatelessWidget {
               final isSafe = item.percentage >= threshold;
               final Color barColor = isSafe ? AppTheme.emeraldGreen : AppTheme.crimsonRose;
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.royalNavy,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${item.attended}/${item.total} classes (${item.percentage.toStringAsFixed(0)}%)',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: barColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Stack(
-                    children: [
-                      // Background Track
-                      Container(
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppTheme.borderLight,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      // Progress Bar
-                      FractionallySizedBox(
-                        widthFactor: (item.percentage / 100.0).clamp(0.0, 1.0),
-                        child: Container(
-                          height: 8,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: isSafe
-                                  ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                                  : [const Color(0xFFF43F5E), const Color(0xFFE11D48)],
+              return StaggeredEntrance(
+                index: index,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.royalNavy,
                             ),
-                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 8),
+                        Text(
+                          '${item.attended}/${item.total} classes (${item.percentage.toStringAsFixed(0)}%)',
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: barColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    AnimatedProgressBar(
+                      value: (item.percentage / 100.0).clamp(0.0, 1.0),
+                      height: 8,
+                      color: barColor,
+                    ),
+                  ],
+                ),
               );
             },
           ),

@@ -1,11 +1,11 @@
 {
-    "name": "ccsa_smart_attendance",
-    "short_name": "ccsa_smart_attendance",
+    "name": "CCSAAS — Attendance System",
+    "short_name": "CCSAAS",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#0F2942",
+    "description": "CCSAAS (CCSA Attendance System) — Dynamic rotating QR attendance for Centre for Computer Science and Applications, Dibrugarh University.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

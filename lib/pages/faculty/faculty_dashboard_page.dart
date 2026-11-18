@@ -8,8 +8,11 @@ import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/csv_export_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/marquee_text.dart';
 import '../../widgets/attendance_chart.dart';
 import '../../widgets/custom_cards.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/micro_interactions.dart';
 import '../../widgets/responsive_layout.dart';
 import '../common/settings_page.dart';
 import 'create_subject_page.dart';
@@ -58,37 +61,49 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
     List<AttendanceSession> sess = [];
 
     try {
-      // 1. Fetch live state from Hostinger MySQL
-      final cloudSubs = await ApiService.instance.getFacultySubjects(email);
-      final cloudSess = await ApiService.instance.getFacultySessions(teacherEmail: email);
+      // 1. Fetch live authoritative state from Hostinger MySQL (parallel)
+      final results = await Future.wait([
+        ApiService.instance.getFacultySubjects(email),
+        ApiService.instance.getFacultySessions(teacherEmail: email),
+      ]);
+      final cloudSubs = results[0] as List<Subject>;
+      final cloudSess = results[1] as List<AttendanceSession>;
 
-      if (cloudSubs.isNotEmpty || cloudSess.isNotEmpty) {
-        subs = cloudSubs;
-        sess = cloudSess;
+      subs = cloudSubs;
+      sess = cloudSess;
 
-        // Reconcile local SQLite cache (safe on mobile/desktop, ignored on web)
-        try {
-          final currentLocalSubs = await DatabaseHelper.instance.getSubjectsByTeacher(email);
-          final cloudSubIds = cloudSubs.map((s) => s.id).toSet();
-          for (var local in currentLocalSubs) {
-            if (!cloudSubIds.contains(local.id)) {
-              await DatabaseHelper.instance.deleteSubject(local.id);
-            }
+      // Reconcile local SQLite cache (safe on mobile/desktop, ignored on web)
+      try {
+        final currentLocalSubs = await DatabaseHelper.instance.getSubjectsByTeacher(email);
+        final cloudSubIds = cloudSubs.map((s) => s.id).toSet();
+        for (var local in currentLocalSubs) {
+          if (!cloudSubIds.contains(local.id)) {
+            await DatabaseHelper.instance.deleteSubject(local.id);
           }
-          for (var s in cloudSubs) {
-            await DatabaseHelper.instance.insertSubject(s);
-          }
-        } catch (e) {
-          debugPrint('Local SQLite cache sync skipped: $e');
         }
-      } else {
-        try {
-          subs = await DatabaseHelper.instance.getSubjectsByTeacher(email);
-          sess = await DatabaseHelper.instance.getAllSessionsForTeacher(email);
-        } catch (_) {}
+        for (var s in cloudSubs) {
+          await DatabaseHelper.instance.insertSubject(s);
+        }
+
+        // Reconcile local sessions with cloud: delete sessions that no longer exist in cloud
+        final localSessions = await DatabaseHelper.instance.getAllSessionsForTeacher(email);
+        final cloudSessionIds = cloudSess.map((s) => s.id).toSet();
+        final db = await DatabaseHelper.instance.database;
+        for (var localS in localSessions) {
+          if (!cloudSessionIds.contains(localS.id)) {
+            await db.delete('attendance_records', where: 'session_id = ?', whereArgs: [localS.id]);
+            await db.delete('attendance_sessions', where: 'id = ?', whereArgs: [localS.id]);
+          }
+        }
+      } catch (e) {
+        debugPrint('Local SQLite cache sync skipped: $e');
       }
     } catch (e) {
-      debugPrint('Dashboard data load error: $e');
+      debugPrint('Dashboard data load error (using offline fallback): $e');
+      try {
+        subs = await DatabaseHelper.instance.getSubjectsByTeacher(email);
+        sess = await DatabaseHelper.instance.getAllSessionsForTeacher(email);
+      } catch (_) {}
     } finally {
       Map<String, int> sessCounts = {};
       Map<String, int> presCounts = {};
@@ -146,24 +161,31 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: AppTheme.cardRadius),
+        shape: RoundedRectangleBorder(borderRadius: AppTheme.xlRadius),
         title: Row(
           children: [
-            const Icon(LucideIcons.alertTriangle, color: AppTheme.crimsonRose, size: 20),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.crimsonRoseBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(LucideIcons.alertTriangle, color: AppTheme.crimsonRose, size: 18),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Delete Subject?',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+                style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16),
               ),
             ),
           ],
         ),
         content: Text(
           'Are you sure you want to remove ${subject.code} (${subject.name})? All past session logs will also be permanently deleted.',
-          style: GoogleFonts.inter(fontSize: 13, height: 1.4),
+          style: GoogleFonts.inter(fontSize: 13, height: 1.45),
         ),
         actions: [
           TextButton(
@@ -272,7 +294,12 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
     ];
 
     final contentWidget = _isLoading
-        ? const Center(child: CircularProgressIndicator(color: AppTheme.royalNavy))
+        ? const Center(
+            child: BrandLoader(
+              message: 'Syncing your classroom…',
+              size: 48,
+            ),
+          )
         : RefreshIndicator(
             onRefresh: _loadDashboardData,
             color: AppTheme.royalNavy,
@@ -372,12 +399,25 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 3-Column Metric Highlights (Classes instead of hours)
-                          _buildMetricsOverview(totalStudentTurnout),
+                          // Expressive Doodle Greeting Header
+                          StaggeredEntrance(
+                            index: 0,
+                            child: _buildGreetingHeader(user?.name, user?.designation),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // 3-Column Metric Highlights (animated)
+                          StaggeredEntrance(
+                            index: 1,
+                            child: _buildMetricsOverview(totalStudentTurnout),
+                          ),
                           const SizedBox(height: 20),
 
                           // Quick Actions Bar (3 Items: Add Subject, Session Logs, Export All)
-                          _buildQuickActionsRow(context),
+                          StaggeredEntrance(
+                            index: 2,
+                            child: _buildQuickActionsRow(context),
+                          ),
                           const SizedBox(height: 24),
 
                           // Visual Attendance Graph Analytics
@@ -444,7 +484,10 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
                                       fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
                                       fontSize: 12,
                                     ),
-                                    onSelected: (_) => setState(() => _selectedFilter = filter),
+                                    onSelected: (_) {
+                                      AppTheme.triggerSelectionHaptic();
+                                      setState(() => _selectedFilter = filter);
+                                    },
                                   ),
                                 );
                               }).toList(),
@@ -454,18 +497,22 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
 
                           // Subject Cards: Adaptive Grid on Desktop/Tablet vs Column on Mobile
                           if (filteredSubjects.isEmpty)
-                            EmptyStateWidget(
-                              icon: LucideIcons.bookX,
-                              title: 'No Subjects Found',
-                              subtitle: 'Tap "Add Subject" to create a new subject course and enroll student batches.',
-                              buttonLabel: 'Add New Subject',
-                              onButtonPressed: () async {
-                                final created = await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const CreateSubjectPage()),
-                                );
-                                if (created == true) _loadDashboardData();
-                              },
+                            StaggeredEntrance(
+                              index: 3,
+                              child: EmptyStateWidget(
+                                scene: DoodleScene.openBook,
+                                icon: LucideIcons.bookX,
+                                title: 'No Subjects Found',
+                                subtitle: 'Tap "Add Subject" to create a new subject course and enroll student batches.',
+                                buttonLabel: 'Add New Subject',
+                                onButtonPressed: () async {
+                                  final created = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const CreateSubjectPage()),
+                                  );
+                                  if (created == true) _loadDashboardData();
+                                },
+                              ),
                             )
                           else if (isWide)
                             GridView.builder(
@@ -480,7 +527,10 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
                               itemCount: filteredSubjects.length,
                               itemBuilder: (context, index) {
                                 final subject = filteredSubjects[index];
-                                return _buildSubjectCard(subject);
+                                return StaggeredEntrance(
+                                  index: index.clamp(0, 6),
+                                  child: _buildSubjectCard(subject),
+                                );
                               },
                             )
                           else
@@ -491,7 +541,10 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
                               separatorBuilder: (_, __) => const SizedBox(height: 14),
                               itemBuilder: (context, index) {
                                 final subject = filteredSubjects[index];
-                                return _buildSubjectCard(subject);
+                                return StaggeredEntrance(
+                                  index: index.clamp(0, 6),
+                                  child: _buildSubjectCard(subject),
+                                );
                               },
                             ),
                           const SizedBox(height: 32),
@@ -512,55 +565,138 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
     );
   }
 
-  Widget _buildMetricsOverview(int totalStudentTurnout) {
+  Widget _buildGreetingHeader(String? name, String? designation) {
+    final hour = DateTime.now().hour;
+    final String greeting = hour < 12 ? 'Good Morning' : (hour < 17 ? 'Good Afternoon' : 'Good Evening');
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppTheme.cardRadius,
-        border: Border.all(color: AppTheme.borderLight, width: 1.0),
-        boxShadow: AppTheme.softShadow,
+        gradient: AppTheme.heroGradient,
+        borderRadius: AppTheme.heroRadius,
+        boxShadow: AppTheme.heroCardShadow,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
+      child: ClipRRect(
+        borderRadius: AppTheme.heroRadius,
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Stack(
+            children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(painter: DoodlePatternPainter(ink: Colors.white, opacity: 0.08, seed: 21)),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Active Subjects', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-                const SizedBox(height: 4),
-                Text('${_subjects.length}', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.royalNavy)),
+                Row(
+                  children: [
+                    Text(
+                      greeting,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withOpacity(0.75),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text('👋', style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  name ?? 'Faculty Portal',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  designation ?? 'CCSA Faculty Member • Dibrugarh University',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withOpacity(0.72),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _HeaderChip(
+                      icon: LucideIcons.calendarDays,
+                      label: _todayLabel(),
+                    ),
+                    const SizedBox(width: 8),
+                    const _HeaderChip(
+                      icon: LucideIcons.graduationCap,
+                      label: 'CCSA • DU',
+                    ),
+                  ],
+                ),
               ],
             ),
-          ),
-          Container(width: 1, height: 36, color: AppTheme.borderLight),
-          Expanded(
-            child: Column(
-              children: [
-                Text('Total Classes', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-                const SizedBox(height: 4),
-                Text('${_sessions.length}', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.electricTeal)),
-              ],
-            ),
-          ),
-          Container(width: 1, height: 36, color: AppTheme.borderLight),
-          Expanded(
-            child: Column(
-              children: [
-                Text('Total Present', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-                const SizedBox(height: 4),
-                Text('$totalStudentTurnout', style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.emeraldGreen)),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
+        ),
       ),
+    );
+  }
+
+  String _todayLabel() {
+    final now = DateTime.now();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
+  }
+
+  Widget _buildMetricsOverview(int totalStudentTurnout) {
+    return Row(
+      children: [
+        Expanded(
+          child: _MetricTile(
+            label: 'Subjects',
+            value: _subjects.length,
+            icon: LucideIcons.bookOpen,
+            iconBg: AppTheme.indigoAccentBg,
+            iconColor: AppTheme.indigoAccent,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _MetricTile(
+            label: 'Total Classes',
+            value: _sessions.length,
+            icon: LucideIcons.calendarCheck,
+            iconBg: AppTheme.electricTealBg,
+            iconColor: AppTheme.electricTeal,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _MetricTile(
+            label: 'Total Present',
+            value: totalStudentTurnout,
+            icon: LucideIcons.userCheck,
+            iconBg: AppTheme.emeraldGreenBg,
+            iconColor: AppTheme.emeraldGreen,
+          ),
+        ),
+      ],
     );
   }
 
   /// 3 Quick Actions: Add Subject, Session Logs, Export All
   Widget _buildQuickActionsRow(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: AppTheme.cardRadius,
@@ -590,6 +726,13 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
             onTap: () {
               if (_subjects.isNotEmpty) {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => SessionHistoryPage(subject: _subjects.first)));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Create a subject first to view session logs.'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               }
             },
           ),
@@ -607,135 +750,250 @@ class _FacultyDashboardPageState extends State<FacultyDashboardPage> {
   Widget _buildSubjectCard(Subject subject) {
     final theme = Theme.of(context);
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        mouseCursor: SystemMouseCursors.click,
-        onTap: () {
-          AppTheme.triggerLightHaptic();
-          Navigator.push(context, MaterialPageRoute(builder: (_) => SubjectDetailsPage(subject: subject)));
-        },
-        borderRadius: AppTheme.cardRadius,
-        splashColor: theme.colorScheme.primary.withOpacity(0.06),
-        hoverColor: theme.colorScheme.primary.withOpacity(0.03),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: AppTheme.cardRadius,
-            border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.7), width: 1.0),
-            boxShadow: AppTheme.softShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                        decoration: BoxDecoration(
-                          color: AppTheme.royalNavy.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          subject.code,
-                          style: GoogleFonts.sourceCodePro(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
-                        ),
+    return PressableScale(
+      onTap: () {
+        AppTheme.triggerLightHaptic();
+        Navigator.push(context, MaterialPageRoute(builder: (_) => SubjectDetailsPage(subject: subject)));
+      },
+      pressedScale: 0.975,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: AppTheme.cardRadius,
+          border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.7), width: 1.0),
+          boxShadow: AppTheme.softShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.royalNavy.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                        decoration: BoxDecoration(
-                          color: AppTheme.electricTealBg,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '${subject.course} ${subject.semesterDisplay}',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.electricTeal),
-                        ),
+                      child: Text(
+                        subject.code,
+                        style: GoogleFonts.sourceCodePro(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
                       ),
-                      if (subject.geofenceEnabled) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
-                          decoration: BoxDecoration(
-                            color: AppTheme.emeraldGreenBg,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(LucideIcons.mapPin, size: 10, color: Color(0xFF047857)),
-                              const SizedBox(width: 3),
-                              Text('${subject.radiusMeters.toInt()}m GPS', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF047857))),
-                            ],
-                          ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.electricTealBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${subject.course} ${subject.semesterDisplay}',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.electricTeal),
+                      ),
+                    ),
+                    if (subject.geofenceEnabled) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: AppTheme.emeraldGreenBg,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ],
-                      const Spacer(),
-                      PopupMenuButton<String>(
-                        icon: const Icon(LucideIcons.moreVertical, size: 18, color: AppTheme.textSecondary),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 4,
-                        onSelected: (val) {
-                          if (val == 'details') {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => SubjectDetailsPage(subject: subject)));
-                          } else if (val == 'history') {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => SessionHistoryPage(subject: subject)));
-                          } else if (val == 'export') {
-                            _exportSubjectCsv(subject);
-                          } else if (val == 'delete') {
-                            _deleteSubject(subject);
-                          }
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'details', child: Row(children: [Icon(LucideIcons.info, size: 16), SizedBox(width: 8), Text('Subject Details')])),
-                          PopupMenuItem(value: 'history', child: Row(children: [Icon(LucideIcons.history, size: 16), SizedBox(width: 8), Text('Session History')])),
-                          PopupMenuItem(value: 'export', child: Row(children: [Icon(LucideIcons.fileSpreadsheet, size: 16), SizedBox(width: 8), Text('Export CSV Sheet')])),
-                          PopupMenuItem(value: 'delete', child: Row(children: [Icon(LucideIcons.trash2, size: 16, color: AppTheme.crimsonRose), SizedBox(width: 8), Text('Delete Subject', style: TextStyle(color: AppTheme.crimsonRose))])),
-                        ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(LucideIcons.mapPin, size: 10, color: Color(0xFF047857)),
+                            const SizedBox(width: 3),
+                            Text('${subject.radiusMeters.toInt()}m GPS', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF047857))),
+                          ],
+                        ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    subject.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 15.5, color: AppTheme.royalNavy),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Batch: ${subject.batchLabel} • ${subject.enrolledStudentIds.length} Enrolled Students',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+                    const Spacer(),
+                    PopupMenuButton<String>(
+                      icon: const Icon(LucideIcons.moreVertical, size: 18, color: AppTheme.textSecondary),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 4,
+                      onSelected: (val) {
+                        if (val == 'details') {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => SubjectDetailsPage(subject: subject)));
+                        } else if (val == 'history') {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => SessionHistoryPage(subject: subject)));
+                        } else if (val == 'export') {
+                          _exportSubjectCsv(subject);
+                        } else if (val == 'delete') {
+                          _deleteSubject(subject);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'details', child: Row(children: [Icon(LucideIcons.info, size: 16), SizedBox(width: 8), Text('Subject Details')])),
+                        PopupMenuItem(value: 'history', child: Row(children: [Icon(LucideIcons.history, size: 16), SizedBox(width: 8), Text('Session History')])),
+                        PopupMenuItem(value: 'export', child: Row(children: [Icon(LucideIcons.fileSpreadsheet, size: 16), SizedBox(width: 8), Text('Export CSV Sheet')])),
+                        PopupMenuItem(value: 'delete', child: Row(children: [Icon(LucideIcons.trash2, size: 16, color: AppTheme.crimsonRose), SizedBox(width: 8), Text('Delete Subject', style: TextStyle(color: AppTheme.crimsonRose))])),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                MarqueeText(
+                  text: subject.name,
+                  style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 15.5, color: AppTheme.royalNavy),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Batch: ${subject.batchLabel} • ${subject.enrolledStudentIds.length} Enrolled Students',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
 
-              // Action Pill
-              GPayActionPill(
-                label: 'Take Attendance',
-                icon: LucideIcons.qrCode,
+            // Action Pill
+            PressableScale(
+              onTap: () async {
+                final taken = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => DynamicQrSessionPage(subject: subject)),
+                );
+                if (taken == true) _loadDashboardData();
+              },
+              pressedScale: 0.96,
+              child: Container(
                 height: 44,
-                onPressed: () async {
-                  final taken = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => DynamicQrSessionPage(subject: subject)),
-                  );
-                  if (taken == true) _loadDashboardData();
-                },
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                  ),
+                  borderRadius: AppTheme.pillRadius,
+                  boxShadow: AppTheme.glowShadowNavy,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(LucideIcons.qrCode, size: 18, color: Colors.white),
+                    const SizedBox(width: 9),
+                    Flexible(
+                      child: Text(
+                        'Take Attendance',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// Gradient metric tile with animated counter.
+class _MetricTile extends StatelessWidget {
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppTheme.borderLight, width: 1.0),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, size: 16, color: iconColor),
+          ),
+          const SizedBox(height: 8),
+          AnimatedCounter(
+            value: value,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textPrimary,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Translucent chip in hero header.
+class _HeaderChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _HeaderChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.white.withOpacity(0.9)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.white.withOpacity(0.9),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -322,6 +322,9 @@ class AuthService {
     try {
       await DatabaseHelper.instance.updateUserProfile(updatedUser);
       _currentUser = updatedUser;
+      // Persist immediately — otherwise a changed email/name is lost on app
+      // restart because the saved session still holds the old profile.
+      await saveSession(updatedUser);
 
       if (updatedUser.isStudent) {
         final std = await DatabaseHelper.instance.getStudentById(updatedUser.id);

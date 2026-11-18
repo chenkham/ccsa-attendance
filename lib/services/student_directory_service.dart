@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class CcsaDirectoryStudent {
@@ -77,14 +76,23 @@ class StudentDirectoryService {
                   for (final sem in (prog['semesters'] ?? [])) {
                     final semTitle = (sem['semester'] ?? '').toString();
                     int semNum = 1;
-                    if (semTitle.contains('1st')) semNum = 1;
-                    else if (semTitle.contains('2nd')) semNum = 2;
-                    else if (semTitle.contains('3rd')) semNum = 3;
-                    else if (semTitle.contains('4th')) semNum = 4;
-                    else if (semTitle.contains('5th')) semNum = 5;
-                    else if (semTitle.contains('6th')) semNum = 6;
-                    else if (semTitle.contains('7th')) semNum = 7;
-                    else if (semTitle.contains('8th')) semNum = 8;
+                    if (semTitle.contains('1st')) {
+                      semNum = 1;
+                    } else if (semTitle.contains('2nd')) {
+                      semNum = 2;
+                    } else if (semTitle.contains('3rd')) {
+                      semNum = 3;
+                    } else if (semTitle.contains('4th')) {
+                      semNum = 4;
+                    } else if (semTitle.contains('5th')) {
+                      semNum = 5;
+                    } else if (semTitle.contains('6th')) {
+                      semNum = 6;
+                    } else if (semTitle.contains('7th')) {
+                      semNum = 7;
+                    } else if (semTitle.contains('8th')) {
+                      semNum = 8;
+                    }
 
                     for (final s in (sem['students'] ?? [])) {
                       final name = (s['name'] ?? '').toString().trim();

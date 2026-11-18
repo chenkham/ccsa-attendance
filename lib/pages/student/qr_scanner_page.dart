@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -9,6 +12,8 @@ import '../../services/device_security_service.dart';
 import '../../services/location_service.dart';
 import '../../services/totp_qr_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/micro_interactions.dart';
 
 class QrScannerPage extends StatefulWidget {
   const QrScannerPage({super.key});
@@ -209,16 +214,8 @@ class _QrScannerPageState extends State<QrScannerPage> with SingleTickerProvider
       return;
     }
 
-    // 6. Record Verified Attendance in Local Database & Hostinger MySQL Cloud
-    await DatabaseHelper.instance.recordSingleStudentAttendance(
-      sessionId: sessionId,
-      studentId: user.id,
-      studentRollNo: user.studentRollNo ?? student?.classRollNo ?? 'N/A',
-      studentName: user.name,
-    );
-
-    // Sync live scan to Hostinger MySQL immediately
-    await ApiService.instance.recordStudentAttendanceLive(
+    // 6. Record Verified Attendance DIRECTLY to Hostinger MySQL Cloud (Single Source of Truth)
+    final cloudSuccess = await ApiService.instance.recordStudentAttendanceLive(
       sessionId: sessionId,
       studentId: user.id,
       email: user.email,
@@ -229,6 +226,48 @@ class _QrScannerPageState extends State<QrScannerPage> with SingleTickerProvider
       subjectName: subjectName,
       teacherEmail: subject?.teacherEmail,
     );
+
+    if (!cloudSuccess) {
+      AppTheme.triggerErrorHaptic();
+      if (mounted) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            title: const Row(
+              children: [
+                Icon(LucideIcons.cloudOff, color: AppTheme.crimsonRose, size: 24),
+                SizedBox(width: 8),
+                Text('Server Sync Failed'),
+              ],
+            ),
+            content: const Text(
+              'Could not record your attendance in the university cloud database. Please ensure your mobile data or Wi-Fi is connected and scan again.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.royalNavy),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        );
+      }
+      if (mounted) setState(() => _isProcessing = false);
+      return;
+    }
+
+    // Only cache to local database after confirmed success in online cloud database
+    try {
+      await DatabaseHelper.instance.recordSingleStudentAttendance(
+        sessionId: sessionId,
+        studentId: user.id,
+        studentRollNo: user.studentRollNo ?? student?.classRollNo ?? 'N/A',
+        studentName: user.name,
+      );
+    } catch (_) {}
 
     AppTheme.triggerSuccessHaptic();
 
@@ -241,18 +280,8 @@ class _QrScannerPageState extends State<QrScannerPage> with SingleTickerProvider
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: const BoxDecoration(
-                  color: AppTheme.emeraldGreenBg,
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(LucideIcons.checkCheck, size: 36, color: Color(0xFF047857)),
-                ),
-              ),
-              const SizedBox(height: 16),
+              const AnimatedSuccessCheck(size: 72),
+              const SizedBox(height: 14),
               Text(
                 'Attendance Confirmed!',
                 style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
@@ -295,6 +324,44 @@ class _QrScannerPageState extends State<QrScannerPage> with SingleTickerProvider
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final scanWindowSize = size.width * 0.72;
+
+    // Camera scanning is only available on mobile hardware. On desktop/web
+    // builds show a friendly doodle state instead of crashing the plugin.
+    if (!kIsWeb && !Platform.isAndroid && !Platform.isIOS) {
+      return Scaffold(
+        backgroundColor: AppTheme.bgLight,
+        appBar: AppBar(
+          backgroundColor: AppTheme.bgLight,
+          title: Text(
+            'Scan Classroom QR',
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+          ),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const DoodleEmptyArt(scene: DoodleScene.qrFrame, size: 150),
+                const SizedBox(height: 16),
+                Text(
+                  'Camera Scanning Needs a Phone',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(fontSize: 17, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Live QR scanning uses your device camera. Please open the CCSA app on your Android or iOS phone to mark attendance — this desktop session keeps all your data in sync.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 12.5, color: AppTheme.textSecondary, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -341,10 +408,10 @@ class _QrScannerPageState extends State<QrScannerPage> with SingleTickerProvider
               height: scanWindowSize,
               child: Stack(
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
-                      borderRadius: BorderRadius.circular(24),
+                  // Google-style corner brackets
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _ReticlePainter(),
                     ),
                   ),
                   AnimatedBuilder(
@@ -495,4 +562,52 @@ class _QrScannerPageState extends State<QrScannerPage> with SingleTickerProvider
       ),
     );
   }
+}
+
+/// Google Lens-style corner bracket reticle.
+class _ReticlePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round
+      ..color = AppTheme.electricTeal;
+
+    const len = 34.0;
+    const r = 24.0;
+
+    // Top-left
+    final path1 = Path()
+      ..moveTo(0, len)
+      ..lineTo(0, r)
+      ..quadraticBezierTo(0, 0, r, 0)
+      ..lineTo(len, 0);
+    // Top-right
+    final path2 = Path()
+      ..moveTo(size.width - len, 0)
+      ..lineTo(size.width - r, 0)
+      ..quadraticBezierTo(size.width, 0, size.width, r)
+      ..lineTo(size.width, len);
+    // Bottom-right
+    final path3 = Path()
+      ..moveTo(size.width, size.height - len)
+      ..lineTo(size.width, size.height - r)
+      ..quadraticBezierTo(size.width, size.height, size.width - r, size.height)
+      ..lineTo(size.width - len, size.height);
+    // Bottom-left
+    final path4 = Path()
+      ..moveTo(len, size.height)
+      ..lineTo(r, size.height)
+      ..quadraticBezierTo(0, size.height, 0, size.height - r)
+      ..lineTo(0, size.height - len);
+
+    canvas.drawPath(path1, paint);
+    canvas.drawPath(path2, paint);
+    canvas.drawPath(path3, paint);
+    canvas.drawPath(path4, paint);
+  }
+
+  @override
+  bool shouldRepaint(_ReticlePainter oldDelegate) => false;
 }

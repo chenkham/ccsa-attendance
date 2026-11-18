@@ -6,6 +6,8 @@ import '../../services/auth_service.dart';
 import '../../services/faculty_directory_service.dart';
 import '../../services/student_directory_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/micro_interactions.dart';
 import '../faculty/faculty_dashboard_page.dart';
 import '../student/student_dashboard_page.dart';
 
@@ -16,8 +18,9 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   late TabController _tabController;
+  late final AnimationController _entranceController;
 
   // Sign In Controllers
   final TextEditingController _signInEmailController = TextEditingController();
@@ -44,12 +47,15 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _entranceController = AnimationController(vsync: this, duration: AppTheme.motionSlow);
+    _entranceController.forward();
     StudentDirectoryService.instance.fetchLiveDirectory();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _entranceController.dispose();
     _signInEmailController.dispose();
     _signInPasswordController.dispose();
     _guestFacultyNameController.dispose();
@@ -61,12 +67,31 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
 
   void _showToast(String message, {bool isError = false}) {
     if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            Icon(
+              isError ? LucideIcons.alertCircle : LucideIcons.checkCircle2,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: isError ? AppTheme.crimsonRose : AppTheme.emeraldGreen,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        elevation: 6,
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -227,22 +252,22 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
             title: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
                     color: AppTheme.royalNavy.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(LucideIcons.mailCheck, color: AppTheme.royalNavy, size: 20),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Email Verification',
-                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
               ],
@@ -276,7 +301,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                       filled: true,
                       fillColor: AppTheme.bgLight,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                     ),
                   ),
                 ],
@@ -290,7 +315,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.royalNavy,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: isVerifying
                     ? null
@@ -385,7 +410,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             height: MediaQuery.of(context).size.height * 0.78,
             decoration: const BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: Column(
               children: [
@@ -437,8 +462,8 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                       filled: true,
                       fillColor: AppTheme.bgLight,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                     ),
                     onChanged: (val) {
                       setModalState(() {
@@ -463,12 +488,12 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                         });
                         Navigator.pop(bCtx);
                       },
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
                           color: AppTheme.emeraldGreenBg,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppTheme.emeraldGreenBorder),
                         ),
                         child: Row(
@@ -504,7 +529,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.royalNavy,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                     ),
                                     icon: const Icon(LucideIcons.userCheck, size: 16),
                                     label: Text('Use "$query" as My Name'),
@@ -533,7 +558,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                               contentPadding: const EdgeInsets.symmetric(vertical: 2),
                               leading: CircleAvatar(
                                 radius: 18,
-                                backgroundColor: AppTheme.royalNavy.withOpacity(0.08),
+                                backgroundColor: AppTheme.googleSky,
                                 child: Text(
                                   std.name.isNotEmpty ? std.name[0].toUpperCase() : 'S',
                                   style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
@@ -583,11 +608,11 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
           if (currentStep == 3) dialogTitle = 'Set New Password';
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
             title: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(9),
                   decoration: const BoxDecoration(
                     color: AppTheme.electricTealBg,
                     shape: BoxShape.circle,
@@ -600,11 +625,11 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     size: 20,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     dialogTitle,
-                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
               ],
@@ -663,7 +688,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                         prefixIcon: const Icon(LucideIcons.mail, size: 18, color: AppTheme.royalNavy),
                         filled: true,
                         fillColor: AppTheme.bgLight,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ] else if (currentStep == 2) ...[
@@ -688,7 +713,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                         counterText: '',
                         filled: true,
                         fillColor: AppTheme.bgLight,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ] else ...[
@@ -705,7 +730,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                         prefixIcon: const Icon(LucideIcons.lock, size: 18, color: AppTheme.royalNavy),
                         filled: true,
                         fillColor: AppTheme.bgLight,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -717,7 +742,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                         prefixIcon: const Icon(LucideIcons.lock, size: 18, color: AppTheme.royalNavy),
                         filled: true,
                         fillColor: AppTheme.bgLight,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ],
@@ -732,7 +757,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.royalNavy,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: isSubmitting
                     ? null
@@ -858,92 +883,180 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Official Dibrugarh University Logo
-                  Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: AppTheme.softShadow,
-                      border: Border.all(color: AppTheme.borderLight, width: 2),
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/du.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(LucideIcons.graduationCap, size: 44, color: AppTheme.royalNavy),
+              child: FadeTransition(
+                opacity: CurvedAnimation(parent: _entranceController, curve: Curves.easeOut),
+                child: SlideTransition(
+                  position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(
+                    CurvedAnimation(parent: _entranceController, curve: AppTheme.curveExpressive),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Expressive doodle header card
+                      _buildBrandHeader(),
+                      const SizedBox(height: 16),
+
+                      // Tab Bar Selector (Sign In / Sign Up)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppTheme.borderLight),
+                          boxShadow: AppTheme.softShadow,
+                        ),
+                        child: TabBar(
+                          controller: _tabController,
+                          labelColor: Colors.white,
+                          unselectedLabelColor: AppTheme.textSecondary,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicator: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13.5),
+                          dividerColor: Colors.transparent,
+                          tabs: const [
+                            Tab(text: 'Sign In'),
+                            Tab(text: 'Create Account'),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                      const SizedBox(height: 18),
 
-                  Text(
-                    'CCSA Attendance',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.royalNavy,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'Centre for Computer Science and Applications\nDibrugarh University',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Tab Bar Selector (Sign In / Sign Up)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.borderLight),
-                      boxShadow: AppTheme.softShadow,
-                    ),
-                    child: TabBar(
-                      controller: _tabController,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: AppTheme.textSecondary,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      indicator: BoxDecoration(
-                        color: AppTheme.royalNavy,
-                        borderRadius: BorderRadius.circular(11),
+                      // Tab Views
+                      SizedBox(
+                        height: 520,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildSignInForm(),
+                            _buildSignUpForm(),
+                          ],
+                        ),
                       ),
-                      labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13.5),
-                      tabs: const [
-                        Tab(text: 'Sign In'),
-                        Tab(text: 'Create Account'),
-                      ],
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
-
-                  // Tab Views
-                  SizedBox(
-                    height: 520,
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildSignInForm(),
-                        _buildSignUpForm(),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrandHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+      decoration: BoxDecoration(
+        gradient: AppTheme.heroGradient,
+        borderRadius: AppTheme.heroRadius,
+        boxShadow: AppTheme.heroCardShadow,
+      ),
+      child: ClipRRect(
+        borderRadius: AppTheme.heroRadius,
+        child: Stack(
+          children: [
+            // Doodle pattern backdrop
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: DoodlePatternPainter(ink: Colors.white, opacity: 0.08, seed: 11),
+                ),
+              ),
+            ),
+            Column(
+              children: [
+                Row(
+                  children: [
+                    // Logo medallion
+                    Container(
+                      width: 62,
+                      height: 62,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        border: Border.all(color: Colors.white.withOpacity(0.6), width: 2),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 14, offset: const Offset(0, 6)),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(6),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/images/du.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(LucideIcons.graduationCap, size: 30, color: AppTheme.royalNavy),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'CCSAAS',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: -0.4,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _GoogleDotsRow(),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Centre for Computer Science and Applications',
+                            maxLines: 2,
+                            softWrap: true,
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w500,
+                              height: 1.25,
+                              color: Colors.white.withOpacity(0.75),
+                            ),
+                          ),
+                          Text(
+                            'Dibrugarh University',
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white.withOpacity(0.75),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // Feature pills — wrap to a second line on narrow screens
+                const Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _HeaderPill(icon: LucideIcons.qrCode, label: 'Dynamic QR'),
+                    _HeaderPill(icon: LucideIcons.mapPin, label: 'Geo-verified'),
+                    _HeaderPill(icon: LucideIcons.cloud, label: 'Live Sync'),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -955,23 +1068,29 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildInputLabel('Academic Email Address'),
-          TextFormField(
-            controller: _signInEmailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: _inputDecoration(hint: 'e.g. name@du.ac.in', prefixIcon: LucideIcons.mail),
+          StaggeredEntrance(
+            index: 0,
+            child: TextFormField(
+              controller: _signInEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: _inputDecoration(hint: 'e.g. name@du.ac.in', prefixIcon: LucideIcons.mail),
+            ),
           ),
           const SizedBox(height: 16),
 
           _buildInputLabel('Password'),
-          TextFormField(
-            controller: _signInPasswordController,
-            obscureText: _obscureSignInPassword,
-            decoration: _inputDecoration(
-              hint: 'Enter your password',
-              prefixIcon: LucideIcons.lock,
-              suffixIcon: IconButton(
-                icon: Icon(_obscureSignInPassword ? LucideIcons.eyeOff : LucideIcons.eye, size: 18, color: AppTheme.textSecondary),
-                onPressed: () => setState(() => _obscureSignInPassword = !_obscureSignInPassword),
+          StaggeredEntrance(
+            index: 1,
+            child: TextFormField(
+              controller: _signInPasswordController,
+              obscureText: _obscureSignInPassword,
+              decoration: _inputDecoration(
+                hint: 'Enter your password',
+                prefixIcon: LucideIcons.lock,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscureSignInPassword ? LucideIcons.eyeOff : LucideIcons.eye, size: 18, color: AppTheme.textSecondary),
+                  onPressed: () => setState(() => _obscureSignInPassword = !_obscureSignInPassword),
+                ),
               ),
             ),
           ),
@@ -983,27 +1102,42 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
               onPressed: _showForgotPasswordDialog,
               child: Text(
                 'Forgot Password?',
-                style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.royalNavy),
+                style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.googleBlue),
               ),
             ),
           ),
           const SizedBox(height: 12),
 
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isSigningIn ? null : _handleSignIn,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.royalNavy,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: _isSigningIn
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(LucideIcons.logIn, size: 18),
-              label: Text(
-                _isSigningIn ? 'Signing In...' : 'Sign In',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+          StaggeredEntrance(
+            index: 2,
+            child: PressableScale(
+              onTap: _isSigningIn ? null : _handleSignIn,
+              child: Container(
+                width: double.infinity,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: AppTheme.glowShadowNavy,
+                ),
+                alignment: Alignment.center,
+                child: _isSigningIn
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4))
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(LucideIcons.logIn, size: 18, color: Colors.white),
+                          const SizedBox(width: 9),
+                          Text(
+                            'Sign In',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14.5, color: Colors.white),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ),
@@ -1025,7 +1159,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   label: 'Student',
                   icon: LucideIcons.user,
                   isSelected: _signUpRole == 'student',
-                  onTap: () => setState(() => _signUpRole = 'student'),
+                  onTap: () {
+                    AppTheme.triggerSelectionHaptic();
+                    setState(() => _signUpRole = 'student');
+                  },
                 ),
               ),
               const SizedBox(width: 10),
@@ -1034,7 +1171,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   label: 'Faculty',
                   icon: LucideIcons.briefcase,
                   isSelected: _signUpRole == 'faculty',
-                  onTap: () => setState(() => _signUpRole = 'faculty'),
+                  onTap: () {
+                    AppTheme.triggerSelectionHaptic();
+                    setState(() => _signUpRole = 'faculty');
+                  },
                 ),
               ),
             ],
@@ -1043,19 +1183,19 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
 
           if (_signUpRole == 'student') ...[
             _buildInputLabel('Full Name (Select from CCSA Directory)'),
-            InkWell(
+            PressableScale(
               onTap: _openStudentDirectoryPicker,
-              borderRadius: BorderRadius.circular(10),
+              pressedScale: 0.985,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: _selectedDirectoryStudent != null ? AppTheme.royalNavy : AppTheme.borderLight, width: _selectedDirectoryStudent != null ? 1.5 : 1),
                 ),
                 child: Row(
                   children: [
-                    const Icon(LucideIcons.userCheck, size: 18, color: AppTheme.royalNavy),
+                    Icon(LucideIcons.userCheck, size: 18, color: _selectedDirectoryStudent != null ? AppTheme.googleGreen : AppTheme.royalNavy),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1137,22 +1277,44 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
           ),
           const SizedBox(height: 20),
 
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isSigningUp ? null : _handleSignUp,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.royalNavy,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          PressableScale(
+            onTap: _isSigningUp ? null : _handleSignUp,
+            child: Container(
+              width: double.infinity,
+              height: 50,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: AppTheme.glowShadowNavy,
               ),
-              icon: _isSigningUp
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(LucideIcons.userPlus, size: 18),
-              label: Text(
-                _isSigningUp ? 'Sending Verification Code...' : 'Create Account',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
-              ),
+              alignment: Alignment.center,
+              child: _isSigningUp
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4)),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Sending Code...',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(LucideIcons.userPlus, size: 18, color: Colors.white),
+                        const SizedBox(width: 9),
+                        Text(
+                          'Create Account',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14.5, color: Colors.white),
+                        ),
+                      ],
+                    ),
             ),
           ),
           const SizedBox(height: 16),
@@ -1167,14 +1329,25 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    return PressableScale(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+      pressedScale: 0.95,
+      child: AnimatedContainer(
+        duration: AppTheme.motionFast,
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.royalNavy : Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          gradient: isSelected
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                )
+              : null,
+          color: isSelected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: isSelected ? AppTheme.royalNavy : AppTheme.borderLight),
+          boxShadow: isSelected ? AppTheme.glowShadowNavy : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1213,9 +1386,70 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.royalNavy, width: 1.5)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.royalNavy, width: 1.5)),
+    );
+  }
+}
+
+/// Tiny Google-colored dot quartet used next to the brand name.
+class _GoogleDotsRow extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    const colors = [
+      AppTheme.googleBlue,
+      AppTheme.googleRed,
+      AppTheme.googleYellow,
+      AppTheme.googleGreen,
+    ];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int i = 0; i < colors.length; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(color: colors[i], shape: BoxShape.circle),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Small translucent pill for header feature tags.
+class _HeaderPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _HeaderPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.white.withOpacity(0.9)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.white.withOpacity(0.9),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

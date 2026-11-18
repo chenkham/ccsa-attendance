@@ -95,7 +95,7 @@ class PastAttendanceCsvService {
       }
 
       // Default indices if no headers matched
-      if (rollIdx == -1 && headerRow.length >= 1) rollIdx = 0;
+      if (rollIdx == -1 && headerRow.isNotEmpty) rollIdx = 0;
       if (attendedIdx == -1 && headerRow.length >= 2 && dateColIndices.isEmpty) {
         attendedIdx = nameIdx != 1 ? 1 : (headerRow.length >= 3 ? 2 : 1);
       }

@@ -283,7 +283,7 @@ class _StudentAttendanceDetailSheetState extends State<StudentAttendanceDetailSh
     }
 
     final double pct = _sessions.isNotEmpty ? (attendedCount / _sessions.length) * 100 : 0.0;
-    final bool isEligible = pct >= 75.0;
+    final bool isEligible = pct >= 80.0;
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,

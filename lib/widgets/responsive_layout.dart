@@ -96,50 +96,17 @@ class AdaptiveScaffold extends StatelessWidget {
       backgroundColor: AppTheme.bgLight,
       body: Row(
         children: [
-          // Persistent Desktop / Tablet Navigation Rail
+          // Persistent Desktop / Tablet Navigation Rail (M3 Expressive pill indicator)
           if (isWideScreen && navItems.isNotEmpty)
-            NavigationRail(
+            _ExpressiveNavRail(
               selectedIndex: selectedIndex,
+              navItems: navItems,
               onDestinationSelected: (index) {
-                AppTheme.triggerLightHaptic();
                 onDestinationSelected?.call(index);
                 navItems[index].onTap();
               },
-              backgroundColor: Colors.white,
-              minWidth: isDesktop ? 80 : 72,
-              extended: false,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: headerLeading ??
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppTheme.borderLight),
-                        boxShadow: AppTheme.softShadow,
-                      ),
-                      padding: const EdgeInsets.all(4),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.asset(
-                          'assets/images/du.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const Center(
-                            child: Icon(LucideIcons.graduationCap, color: AppTheme.royalNavy, size: 22),
-                          ),
-                        ),
-                      ),
-                    ),
-              ),
-              destinations: navItems.map((item) {
-                return NavigationRailDestination(
-                  icon: Icon(item.icon, size: 22, color: AppTheme.textSecondary),
-                  selectedIcon: Icon(item.selectedIcon, size: 22, color: AppTheme.royalNavy),
-                  label: Text(item.label, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600)),
-                );
-              }).toList(),
+              extended: isDesktop,
+              headerLeading: headerLeading,
             ),
 
           if (isWideScreen && navItems.isNotEmpty)
@@ -152,6 +119,196 @@ class AdaptiveScaffold extends StatelessWidget {
         ],
       ),
       floatingActionButton: floatingActionButton,
+    );
+  }
+}
+
+/// M3 Expressive Navigation Rail with rounded pill active indicator.
+class _ExpressiveNavRail extends StatefulWidget {
+  final int selectedIndex;
+  final List<AdaptiveNavItem> navItems;
+  final ValueChanged<int> onDestinationSelected;
+  final bool extended;
+  final Widget? headerLeading;
+
+  const _ExpressiveNavRail({
+    required this.selectedIndex,
+    required this.navItems,
+    required this.onDestinationSelected,
+    required this.extended,
+    this.headerLeading,
+  });
+
+  @override
+  State<_ExpressiveNavRail> createState() => _ExpressiveNavRailState();
+}
+
+class _ExpressiveNavRailState extends State<_ExpressiveNavRail> with SingleTickerProviderStateMixin {
+  late final AnimationController _indicatorController;
+
+  @override
+  void initState() {
+    super.initState();
+    _indicatorController = AnimationController(vsync: this, duration: AppTheme.motionNormal);
+    _indicatorController.value = 1.0;
+  }
+
+  @override
+  void didUpdateWidget(_ExpressiveNavRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedIndex != widget.selectedIndex) {
+      _indicatorController
+        ..reset()
+        ..forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _indicatorController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final railWidth = widget.extended ? 228.0 : 84.0;
+
+    return AnimatedContainer(
+      duration: AppTheme.motionNormal,
+      curve: Curves.easeOutCubic,
+      width: railWidth,
+      color: Colors.white,
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          // Leading brand mark
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: widget.headerLeading ??
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.borderLight),
+                    boxShadow: AppTheme.softShadow,
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      'assets/images/du.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(LucideIcons.graduationCap, color: AppTheme.royalNavy, size: 22),
+                      ),
+                    ),
+                  ),
+                ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              itemCount: widget.navItems.length,
+              itemBuilder: (context, index) {
+                final item = widget.navItems[index];
+                final selected = index == widget.selectedIndex;
+                return _RailTile(
+                  item: item,
+                  selected: selected,
+                  extended: widget.extended,
+                  indicatorController: _indicatorController,
+                  onTap: () {
+                    AppTheme.triggerSelectionHaptic();
+                    widget.onDestinationSelected(index);
+                  },
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+class _RailTile extends StatefulWidget {
+  final AdaptiveNavItem item;
+  final bool selected;
+  final bool extended;
+  final AnimationController indicatorController;
+  final VoidCallback onTap;
+
+  const _RailTile({
+    required this.item,
+    required this.selected,
+    required this.extended,
+    required this.indicatorController,
+    required this.onTap,
+  });
+
+  @override
+  State<_RailTile> createState() => _RailTileState();
+}
+
+class _RailTileState extends State<_RailTile> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      widget.selected ? widget.item.selectedIcon : widget.item.icon,
+      size: 21,
+      color: widget.selected ? AppTheme.royalNavy : AppTheme.textSecondary,
+    );
+    final label = Text(
+      widget.item.label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.inter(
+        fontSize: 12.5,
+        fontWeight: widget.selected ? FontWeight.w800 : FontWeight.w600,
+        color: widget.selected ? AppTheme.royalNavy : AppTheme.textSecondary,
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: AppTheme.motionFast,
+            curve: Curves.easeOutCubic,
+            height: 52,
+            padding: EdgeInsets.symmetric(horizontal: widget.extended ? 12 : 0),
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? AppTheme.googleSky.withOpacity(0.65)
+                  : (_hovering ? AppTheme.bgLight : Colors.transparent),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: widget.extended
+                ? Row(
+                    children: [
+                      SizedBox(width: 36, child: Center(child: icon)),
+                      const SizedBox(width: 12),
+                      Expanded(child: label),
+                    ],
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [icon, const SizedBox(height: 3), label],
+                  ),
+          ),
+        ),
+      ),
     );
   }
 }

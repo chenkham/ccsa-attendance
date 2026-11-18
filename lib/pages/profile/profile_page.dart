@@ -6,6 +6,8 @@ import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/device_security_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/micro_interactions.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -143,9 +145,10 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       appBar: AppBar(
+        backgroundColor: AppTheme.bgLight,
         title: Text(
           'Academic Profile',
-          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.royalNavy),
         ),
       ),
       body: SingleChildScrollView(
@@ -158,63 +161,82 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Profile Overview Header Card
+                  // Profile Overview Header Card — expressive gradient hero
                   Container(
-                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: AppTheme.roundedRadius,
-                      border: Border.all(color: AppTheme.borderLight, width: 1.2),
-                      boxShadow: AppTheme.softShadow,
+                      gradient: AppTheme.heroGradient,
+                      borderRadius: AppTheme.heroRadius,
+                      boxShadow: AppTheme.heroCardShadow,
                     ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 28,
-                          backgroundColor: AppTheme.royalNavy,
-                          child: Text(
-                            user?.name.isNotEmpty == true ? user!.name[0].toUpperCase() : 'U',
-                            style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white),
+                    child: ClipRRect(
+                      borderRadius: AppTheme.heroRadius,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(painter: DoodlePatternPainter(ink: Colors.white, opacity: 0.08, seed: 41)),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                user?.name ?? 'User Profile',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                user?.email ?? '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: isStudent ? AppTheme.electricTealBg : AppTheme.emeraldGreenBg,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  isStudent ? 'CCSA Student' : 'CCSA Faculty',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: isStudent ? AppTheme.electricTeal : const Color(0xFF047857),
+                          Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white,
+                                    border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    user?.name.isNotEmpty == true ? user!.name[0].toUpperCase() : 'U',
+                                    style: GoogleFonts.plusJakartaSans(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user?.name ?? 'User Profile',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        user?.email ?? '',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withOpacity(0.75)),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: isStudent ? AppTheme.electricTealBg : AppTheme.emeraldGreenBg,
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          isStudent ? 'CCSA Student' : 'CCSA Faculty',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: isStudent ? AppTheme.electricTeal : const Color(0xFF047857),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -338,22 +360,34 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
 
                   // Save Profile Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isSaving ? null : _saveProfile,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.royalNavy,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  PressableScale(
+                    onTap: _isSaving ? null : _saveProfile,
+                    child: Container(
+                      width: double.infinity,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: AppTheme.glowShadowNavy,
                       ),
-                      icon: _isSaving
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(LucideIcons.check, size: 18),
-                      label: Text(
-                        _isSaving ? 'Saving Changes...' : 'Save Profile',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
-                      ),
+                      alignment: Alignment.center,
+                      child: _isSaving
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4))
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(LucideIcons.check, size: 18, color: Colors.white),
+                                const SizedBox(width: 9),
+                                Text(
+                                  'Save Profile',
+                                  style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14.5, color: Colors.white),
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                   const SizedBox(height: 20),

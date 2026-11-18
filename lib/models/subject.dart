@@ -98,7 +98,9 @@ class Subject {
       batchType: map['batch_type'] ?? 'whole',
       teacherEmail: map['teacher_email'] ?? '',
       enrolledStudentIds: studentIds ?? [],
-      geofenceEnabled: map['geofence_enabled'] == 1 || map['geofence_enabled'] == true,
+      geofenceEnabled: map['geofence_enabled'] == 1 ||
+          map['geofence_enabled'] == true ||
+          ((map['geofence_lat'] ?? map['latitude']) != null && (map['geofence_lng'] ?? map['longitude']) != null),
       latitude: (map['latitude'] ?? map['geofence_lat']) != null ? (num.tryParse((map['latitude'] ?? map['geofence_lat']).toString()) ?? 0).toDouble() : null,
       longitude: (map['longitude'] ?? map['geofence_lng']) != null ? (num.tryParse((map['longitude'] ?? map['geofence_lng']).toString()) ?? 0).toDouble() : null,
       radiusMeters: (map['radius_meters'] ?? map['geofence_radius']) != null ? (num.tryParse((map['radius_meters'] ?? map['geofence_radius']).toString()) ?? 50).toDouble() : 50.0,

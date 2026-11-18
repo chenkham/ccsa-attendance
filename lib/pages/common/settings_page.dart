@@ -4,6 +4,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../services/auth_service.dart';
 import '../../services/device_security_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/marquee_text.dart';
+import '../../widgets/doodle_art.dart';
 import '../auth/login_page.dart';
 import '../profile/profile_page.dart';
 
@@ -49,7 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTheme.bgLight,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
           return Padding(
@@ -58,7 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(24),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
               child: Form(
                 key: formKey,
@@ -81,10 +83,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
                             color: AppTheme.royalNavy.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(LucideIcons.lock, color: AppTheme.royalNavy, size: 20),
                         ),
@@ -111,7 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         filled: true,
                         fillColor: AppTheme.bgLight,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                       ),
                       validator: (v) => v == null || v.isEmpty ? 'Please enter current password' : null,
                     ),
@@ -131,7 +133,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         filled: true,
                         fillColor: AppTheme.bgLight,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                       ),
                       validator: (v) {
                         if (v == null || v.isEmpty) return 'Please enter new password';
@@ -151,7 +153,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         filled: true,
                         fillColor: AppTheme.bgLight,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                       ),
                       validator: (v) {
                         if (v == null || v.isEmpty) return 'Please confirm new password';
@@ -203,7 +205,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.royalNavy,
                           padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         icon: isUpdating
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -235,7 +237,7 @@ class _SettingsPageState extends State<SettingsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: AppTheme.bgLight,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
           return Padding(
@@ -244,7 +246,7 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(24),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
               child: Form(
                 key: formKey,
@@ -267,10 +269,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
                             color: AppTheme.royalNavy.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(LucideIcons.mail, color: AppTheme.royalNavy, size: 20),
                         ),
@@ -297,7 +299,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         filled: true,
                         fillColor: AppTheme.bgLight,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                       ),
                       validator: (v) => v == null || v.isEmpty ? 'Please enter current password to verify' : null,
                     ),
@@ -314,7 +316,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         filled: true,
                         fillColor: AppTheme.bgLight,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.borderLight)),
                       ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) return 'Please enter new email address';
@@ -367,7 +369,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.royalNavy,
                           padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         icon: isUpdating
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -392,20 +394,27 @@ class _SettingsPageState extends State<SettingsPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         title: Row(
           children: [
-            const Icon(LucideIcons.logOut, color: AppTheme.crimsonRose, size: 22),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.crimsonRoseBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(LucideIcons.logOut, color: AppTheme.crimsonRose, size: 18),
+            ),
+            const SizedBox(width: 10),
             Text(
               'Sign Out',
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 17),
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 17),
             ),
           ],
         ),
         content: const Text(
           'Are you sure you want to sign out from this device?',
-          style: TextStyle(fontSize: 13, height: 1.35),
+          style: TextStyle(fontSize: 13, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -415,7 +424,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.crimsonRose,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Sign Out'),
@@ -441,9 +450,10 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       appBar: AppBar(
+        backgroundColor: AppTheme.bgLight,
         title: Text(
           'Profile',
-          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
         ),
       ),
       body: SingleChildScrollView(
@@ -454,81 +464,102 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // User Account Tile
+                // User Account Tile — expressive gradient hero
                 if (user != null) ...[
                   Container(
-                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: AppTheme.roundedRadius,
-                      border: Border.all(color: AppTheme.borderLight, width: 1.2),
-                      boxShadow: AppTheme.softShadow,
+                      gradient: AppTheme.heroGradient,
+                      borderRadius: AppTheme.heroRadius,
+                      boxShadow: AppTheme.heroCardShadow,
                     ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundColor: AppTheme.royalNavy,
-                          child: Text(
-                            user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                            style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
+                    child: ClipRRect(
+                      borderRadius: AppTheme.heroRadius,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(painter: DoodlePatternPainter(ink: Colors.white, opacity: 0.08, seed: 17)),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                user.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                user.email,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: user.isStudent ? AppTheme.electricTealBg : AppTheme.emeraldGreenBg,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  user.role == 'faculty' ? 'Faculty Member' : 'Student',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: user.isStudent ? AppTheme.electricTeal : const Color(0xFF047857),
+                          Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white,
+                                    border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
+                                    style: GoogleFonts.plusJakartaSans(fontSize: 19, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      MarqueeText(
+                                        text: user.name,
+                                        style: GoogleFonts.plusJakartaSans(fontSize: 15.5, fontWeight: FontWeight.w800, color: Colors.white),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      MarqueeText(
+                                        text: user.email,
+                                        style: GoogleFonts.inter(fontSize: 11.5, color: Colors.white.withOpacity(0.75)),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: user.isStudent ? AppTheme.electricTealBg : AppTheme.emeraldGreenBg,
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          user.role == 'faculty' ? 'Faculty Member' : 'Student',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: user.isStudent ? AppTheme.electricTeal : const Color(0xFF047857),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Edit Profile',
+                                  icon: const Icon(LucideIcons.chevronRight, size: 20, color: Colors.white),
+                                  onPressed: () async {
+                                    final updated = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()));
+                                    if (updated == true) setState(() {});
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: 'Edit Profile',
-                          icon: const Icon(LucideIcons.chevronRight, size: 20, color: AppTheme.textSecondary),
-                          onPressed: () async {
-                            final updated = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()));
-                            if (updated == true) setState(() {});
-                          },
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
                 ],
 
                 // Security & Credentials Section
-                Text(
-                  'Account Security & Credentials',
-                  style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+                Row(
+                  children: [
+                    Text(
+                      'Account Security & Credentials',
+                      style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
+                    ),
+                    const SizedBox(width: 8),
+                    const DoodleUnderline(width: 44, height: 6),
+                  ],
                 ),
                 const SizedBox(height: 8),
 
@@ -546,11 +577,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             color: AppTheme.royalNavy.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(LucideIcons.lock, size: 18, color: AppTheme.royalNavy),
                         ),
-                        title: Text('Change Password', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+                        title: Text('Change Password', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
                         subtitle: Text('Update your account password', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
                         trailing: const Icon(LucideIcons.chevronRight, size: 16, color: AppTheme.textSecondary),
                         onTap: _showChangePasswordModal,
@@ -561,21 +592,44 @@ class _SettingsPageState extends State<SettingsPage> {
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             color: AppTheme.electricTealBg,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(LucideIcons.mail, size: 18, color: AppTheme.electricTeal),
                         ),
-                        title: Text('Change Email Address', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+                        title: Text('Change Email Address', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
                         subtitle: Text('Update primary academic email', style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary)),
                         trailing: const Icon(LucideIcons.chevronRight, size: 16, color: AppTheme.textSecondary),
                         onTap: _showChangeEmailModal,
+                      ),
+                      const Divider(height: 1, color: AppTheme.borderSubtle),
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.emeraldGreenBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            LucideIcons.shieldCheck,
+                            size: 18,
+                            color: _isBiometricSupported ? AppTheme.emeraldGreen : AppTheme.royalNavy,
+                          ),
+                        ),
+                        title: Text('Hardware Device Binding', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+                        subtitle: Text(
+                          'Device ID: ${_deviceId.length > 16 ? "${_deviceId.substring(0, 16)}..." : _deviceId} • Biometrics: ${_isBiometricSupported ? "Active" : "Unavailable"}',
+                          style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textSecondary),
+                        ),
+                        trailing: Icon(
+                          _isBiometricSupported ? LucideIcons.fingerprint : LucideIcons.smartphone,
+                          size: 16,
+                          color: _isBiometricSupported ? AppTheme.emeraldGreen : AppTheme.textMuted,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
-
-
 
                 // Sign Out Button
                 SizedBox(
@@ -586,7 +640,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       foregroundColor: AppTheme.crimsonRose,
                       side: const BorderSide(color: AppTheme.crimsonRoseBorder, width: 1.2),
                       padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     icon: const Icon(LucideIcons.logOut, size: 18),
                     label: Text(

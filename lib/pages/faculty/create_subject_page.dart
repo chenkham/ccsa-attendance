@@ -4,15 +4,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
 import '../../db/database_helper.dart';
-import '../../models/attendance_session.dart';
 import '../../models/student.dart';
 import '../../models/subject.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
-import '../../services/past_attendance_csv_service.dart';
-import '../../services/student_directory_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/doodle_art.dart';
+import '../../widgets/micro_interactions.dart';
 
 class CreateSubjectPage extends StatefulWidget {
   const CreateSubjectPage({super.key});
@@ -43,11 +42,6 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
   double _radiusMeters = 80.0;
   bool _isAcquiringGps = false;
 
-  // Past Physical Register Attendance Baseline (Item 2)
-  bool _enablePastAttendance = false;
-  PastAttendanceCsvResult? _importedCsvResult;
-  String _rawImportedCsv = '';
-
   @override
   void initState() {
     super.initState();
@@ -69,47 +63,21 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
     setState(() => _isLoadingStudents = true);
 
     List<Student> mergedStudents = [];
-    final Map<String, Student> deduplicated = {};
 
     try {
-      // 1. Fetch live registered students from Hostinger MySQL API
+      // Only fetch students who have signed up with proper email, roll no, exam roll no
       final onlineStudents = await ApiService.instance.getRegisteredStudents(
         course: _selectedCourse,
         semester: _selectedSemester,
       );
 
       for (final std in onlineStudents) {
-        deduplicated[std.id] = std;
         try {
           await DatabaseHelper.instance.insertStudent(std);
         } catch (_) {}
       }
 
-      // 2. Fetch full DU Proxy Student Directory
-      final directoryStudents = StudentDirectoryService.instance.searchStudents(
-        '',
-        course: _selectedCourse,
-        semester: _selectedSemester,
-      );
-
-      for (int i = 0; i < directoryStudents.length; i++) {
-        final dirStd = directoryStudents[i];
-        final rollStr = (i + 1).toString();
-        final stdId = 'du_${dirStd.course}_${dirStd.semester}_$rollStr'.toLowerCase();
-        if (!deduplicated.containsKey(stdId) &&
-            !deduplicated.values.any((s) => s.name.toLowerCase() == dirStd.name.toLowerCase())) {
-          deduplicated[stdId] = Student(
-            id: stdId,
-            name: dirStd.name,
-            classRollNo: rollStr,
-            duExamRollNo: rollStr,
-            course: dirStd.course,
-            semester: dirStd.semester,
-          );
-        }
-      }
-
-      mergedStudents = deduplicated.values.toList();
+      mergedStudents = onlineStudents;
       mergedStudents.sort((a, b) {
         final aNum = int.tryParse(a.classRollNo.replaceAll(RegExp(r'[^0-9]'), ''));
         final bNum = int.tryParse(b.classRollNo.replaceAll(RegExp(r'[^0-9]'), ''));
@@ -132,243 +100,6 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
     }
   }
 
-  void _openCsvImportModal() {
-    AppTheme.triggerLightHaptic();
-    final textController = TextEditingController(text: _rawImportedCsv);
-    PastAttendanceCsvResult? previewResult = _importedCsvResult;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (bCtx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.90,
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppTheme.borderLight,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.royalNavy.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(LucideIcons.fileSpreadsheet, color: AppTheme.royalNavy, size: 20),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Import Past Attendance CSV',
-                          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16.5, color: AppTheme.royalNavy),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      icon: const Icon(LucideIcons.x, size: 20),
-                      onPressed: () => Navigator.pop(bCtx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Supported Column Names Guide
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgLight,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.borderLight),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(LucideIcons.info, size: 14, color: AppTheme.royalNavy),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Accepted CSV Columns & Structure (Auto-Matched):',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 11.5, color: AppTheme.royalNavy),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '• Roll Number Column: Roll No, Roll, Class Roll, Roll Number, ID, Sl No\n'
-                        '• Student Name Column: Student Name, Name, Full Name (optional)\n'
-                        '• Attended Count: Classes Attended, Attended, Present, Total Attended\n'
-                        '• Total Classes: Classes Held, Total Classes, Total Held (optional)\n'
-                        '• Date Matrix: Columns with dates (01/08/2026, 05/08/2026...) with P / A',
-                        style: GoogleFonts.inter(fontSize: 10.5, color: AppTheme.textSecondary, height: 1.35),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Template Fast-Paste Chips
-                Row(
-                  children: [
-                    Text('Load Sample: ', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-                    const SizedBox(width: 6),
-                    ActionChip(
-                      label: const Text('Summary Format', style: TextStyle(fontSize: 11)),
-                      onPressed: () {
-                        textController.text = PastAttendanceCsvService.sampleCsvSummary;
-                        final res = PastAttendanceCsvService.instance.parseCsvContent(textController.text);
-                        setModalState(() => previewResult = res);
-                      },
-                    ),
-                    const SizedBox(width: 6),
-                    ActionChip(
-                      label: const Text('Simple (Roll, Count)', style: TextStyle(fontSize: 11)),
-                      onPressed: () {
-                        textController.text = PastAttendanceCsvService.sampleCsvSimple;
-                        final res = PastAttendanceCsvService.instance.parseCsvContent(textController.text);
-                        setModalState(() => previewResult = res);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // CSV Text Input Area
-                Expanded(
-                  child: TextField(
-                    controller: textController,
-                    maxLines: null,
-                    expands: true,
-                    style: GoogleFonts.sourceCodePro(fontSize: 12),
-                    decoration: InputDecoration(
-                      hintText: 'Paste CSV contents here...\n\nRoll No, Student Name, Classes Held, Classes Attended\n1, Abhigyan Konwar, 12, 11\n2, Abhipran Subadar, 12, 12',
-                      filled: true,
-                      fillColor: AppTheme.bgLight,
-                      contentPadding: const EdgeInsets.all(12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppTheme.borderLight)),
-                    ),
-                    onChanged: (val) {
-                      final res = PastAttendanceCsvService.instance.parseCsvContent(val);
-                      setModalState(() => previewResult = res);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Parse Status Banner
-                if (previewResult != null && previewResult!.success)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.emeraldGreenBg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.emeraldGreen.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(LucideIcons.checkCircle2, color: AppTheme.emeraldGreen, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Parsed ${previewResult!.studentBaselines.length} students • Total ${previewResult!.totalClassesHeld} Classes Held',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 12, color: const Color(0xFF047857)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (previewResult != null && !previewResult!.success && textController.text.trim().isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.crimsonRoseBg,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.crimsonRose.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(LucideIcons.alertCircle, color: AppTheme.crimsonRose, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            previewResult!.errorMessage ?? 'Invalid CSV',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.crimsonRose),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                const SizedBox(height: 12),
-
-                // Apply Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: (previewResult != null && previewResult!.success && previewResult!.studentBaselines.isNotEmpty)
-                        ? () {
-                            setState(() {
-                              _importedCsvResult = previewResult;
-                              _rawImportedCsv = textController.text;
-                            });
-                            Navigator.pop(bCtx);
-                            AppTheme.triggerSuccessHaptic();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Imported past attendance for ${previewResult!.studentBaselines.length} students across ${previewResult!.totalClassesHeld} classes!'),
-                                backgroundColor: AppTheme.emeraldGreen,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.royalNavy,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(LucideIcons.check, size: 18),
-                    label: Text(
-                      previewResult != null && previewResult!.success
-                          ? 'Apply ${previewResult!.studentBaselines.length} Student Records'
-                          : 'Paste or Upload CSV to Apply',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13.5),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   Future<void> _captureCurrentLocation() async {
     setState(() => _isAcquiringGps = true);
@@ -437,8 +168,10 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
       teacherEmail: teacherEmail,
       enrolledStudentIds: _selectedStudentIds.toList(),
       geofenceEnabled: _geofenceEnabled,
-      latitude: _targetLatitude,
-      longitude: _targetLongitude,
+      // When geofencing is OFF store NO coordinates — otherwise cloud-derived
+      // geofence state falsely turns ON for every device.
+      latitude: _geofenceEnabled ? _targetLatitude : null,
+      longitude: _geofenceEnabled ? _targetLongitude : null,
       radiusMeters: _radiusMeters,
       createdAt: DateTime.now(),
     );
@@ -450,73 +183,14 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
 
     await ApiService.instance.syncSubject(subject);
 
-    // Generate Past Baseline Attendance Sessions from pure CSV if imported
-    int pastSessionsCreated = 0;
-    if (_enablePastAttendance && _importedCsvResult != null && _importedCsvResult!.success) {
-      final totalPastHeld = _importedCsvResult!.totalClassesHeld;
-      final baselines = _importedCsvResult!.studentBaselines;
-      final enrolledStudents = _availableStudents.where((s) => _selectedStudentIds.contains(s.id)).toList();
-
-      if (totalPastHeld > 0) {
-        for (int sessionIndex = 1; sessionIndex <= totalPastHeld; sessionIndex++) {
-          final pastSessionId = const Uuid().v4();
-          final sessionDate = DateTime.now().subtract(Duration(days: (totalPastHeld - sessionIndex + 1) * 2));
-
-          int sessionPresentCount = 0;
-          final List<AttendanceRecord> records = [];
-
-          for (final student in enrolledStudents) {
-            final match = baselines.firstWhere(
-              (b) => b.rollNo.toLowerCase() == student.classRollNo.toLowerCase() ||
-                     (b.name.isNotEmpty && student.name.toLowerCase().contains(b.name.toLowerCase())),
-              orElse: () => ParsedStudentBaseline(rollNo: student.classRollNo, name: student.name, attendedClasses: totalPastHeld, totalClasses: totalPastHeld),
-            );
-
-            final bool isPresentThisSession = sessionIndex <= match.attendedClasses;
-            if (isPresentThisSession) sessionPresentCount++;
-
-            records.add(AttendanceRecord(
-              id: const Uuid().v4(),
-              sessionId: pastSessionId,
-              studentId: student.id,
-              studentRollNo: student.classRollNo,
-              studentName: student.name,
-              status: isPresentThisSession ? 'present' : 'absent',
-              markedBy: 'csv_import',
-            ));
-          }
-
-          final pastSession = AttendanceSession(
-            id: pastSessionId,
-            subjectId: subject.id,
-            subjectCode: subject.code,
-            subjectName: subject.name,
-            teacherEmail: teacherEmail,
-            sessionDate: sessionDate,
-            totalPresent: sessionPresentCount,
-            totalEnrolled: enrolledStudents.length,
-            isLab: false,
-          );
-
-          try {
-            await DatabaseHelper.instance.insertAttendanceSession(pastSession, records);
-          } catch (_) {}
-
-          await ApiService.instance.syncAttendanceSession(pastSession, records);
-          pastSessionsCreated++;
-        }
-      }
-    }
-
     AppTheme.triggerSuccessHaptic();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            pastSessionsCreated > 0
-                ? 'Subject "${subject.code}" created with $pastSessionsCreated historical attendance sessions recorded from CSV!'
-                : 'Subject "${subject.code} - ${subject.name}" created successfully!',
+            'Subject "${subject.code} - ${subject.name}" created successfully! '
+            'Previous register attendance can be imported anytime from Subject Details.',
           ),
           backgroundColor: AppTheme.emeraldGreen,
           behavior: SnackBarBehavior.floating,
@@ -552,9 +226,10 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       appBar: AppBar(
+        backgroundColor: AppTheme.bgLight,
         title: Text(
           'Create Subject',
-          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 16),
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.royalNavy),
         ),
       ),
       body: Center(
@@ -591,34 +266,24 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
                           validator: (v) => v == null || v.trim().isEmpty ? 'Enter subject name' : null,
                         ),
                         const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: TextFormField(
-                                controller: _codeController,
-                                decoration: _inputDecoration(
-                                  label: 'Subject Code',
-                                  hint: 'e.g. BCA 301',
-                                  prefixIcon: LucideIcons.hash,
-                                ),
-                                validator: (v) => v == null || v.trim().isEmpty ? 'Enter code' : null,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 3,
-                              child: TextFormField(
-                                controller: _profController,
-                                decoration: _inputDecoration(
-                                  label: 'Teacher Name',
-                                  hint: 'Faculty in charge',
-                                  prefixIcon: LucideIcons.user,
-                                ),
-                                validator: (v) => v == null || v.trim().isEmpty ? 'Enter faculty name' : null,
-                              ),
-                            ),
-                          ],
+                        TextFormField(
+                          controller: _codeController,
+                          decoration: _inputDecoration(
+                            label: 'Subject Code',
+                            hint: 'e.g. BCA 301',
+                            prefixIcon: LucideIcons.hash,
+                          ),
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Enter code' : null,
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: _profController,
+                          decoration: _inputDecoration(
+                            label: 'Teacher Name',
+                            hint: 'Faculty in charge',
+                            prefixIcon: LucideIcons.user,
+                          ),
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Enter faculty name' : null,
                         ),
                       ],
                     ),
@@ -696,150 +361,6 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // 3. Past Physical Register Attendance Import (Pure CSV based)
-                  _buildSectionHeader('Past Register Attendance (Import CSV)', LucideIcons.fileSpreadsheet),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: AppTheme.roundedRadius,
-                      border: Border.all(
-                        color: _enablePastAttendance ? AppTheme.royalNavy : AppTheme.borderLight,
-                        width: _enablePastAttendance ? 1.5 : 1.2,
-                      ),
-                      boxShadow: AppTheme.softShadow,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Import Past Offline Attendance from CSV',
-                                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.royalNavy),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Initialize classes already held in the physical register via CSV.',
-                                    style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: _enablePastAttendance,
-                              activeColor: AppTheme.royalNavy,
-                              onChanged: (val) => setState(() => _enablePastAttendance = val),
-                            ),
-                          ],
-                        ),
-                        if (_enablePastAttendance) ...[
-                          const Divider(height: 24, color: AppTheme.borderSubtle),
-
-                          if (_importedCsvResult != null && _importedCsvResult!.success) ...[
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: AppTheme.emeraldGreenBg,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppTheme.emeraldGreen.withOpacity(0.3)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(LucideIcons.checkCircle2, color: AppTheme.emeraldGreen, size: 20),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'CSV Baseline Loaded Successfully',
-                                          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 13.5, color: const Color(0xFF047857)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '• Total Historical Classes: ${_importedCsvResult!.totalClassesHeld}\n• Student Records Matched: ${_importedCsvResult!.studentBaselines.length}',
-                                    style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF065F46), height: 1.4),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Row(
-                                    children: [
-                                      OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: AppTheme.royalNavy,
-                                          side: const BorderSide(color: AppTheme.royalNavy),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                        ),
-                                        icon: const Icon(LucideIcons.edit3, size: 14),
-                                        label: const Text('Edit / Re-import CSV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                        onPressed: _openCsvImportModal,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      TextButton(
-                                        child: const Text('Clear', style: TextStyle(color: AppTheme.crimsonRose, fontSize: 12, fontWeight: FontWeight.w600)),
-                                        onPressed: () => setState(() {
-                                          _importedCsvResult = null;
-                                          _rawImportedCsv = '';
-                                        }),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ] else ...[
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppTheme.bgLight,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppTheme.borderLight),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Icon(LucideIcons.fileSpreadsheet, size: 36, color: AppTheme.royalNavy),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'No CSV file or data imported yet',
-                                    style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.royalNavy),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Click below to paste or import your physical register CSV sheet.',
-                                    style: GoogleFonts.inter(fontSize: 11.5, color: AppTheme.textSecondary),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.royalNavy,
-                                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    ),
-                                    icon: const Icon(LucideIcons.uploadCloud, size: 16),
-                                    label: const Text('Paste / Import CSV Sheet', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                                    onPressed: _openCsvImportModal,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
 
                   // 4. Classroom GPS Geofencing (Optional)
                   _buildSectionHeader('Classroom GPS Geofencing (Optional)', LucideIcons.mapPin),
@@ -977,8 +498,8 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
 
                         if (_isLoadingStudents)
                           const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Center(child: CircularProgressIndicator(color: AppTheme.royalNavy)),
+                            padding: EdgeInsets.all(20),
+                            child: Center(child: BrandLoader(size: 36)),
                           )
                         else if (filteredList.isEmpty)
                           Padding(
@@ -1035,19 +556,35 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
                   const SizedBox(height: 24),
 
                   // Submit Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _handleCreateSubject,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.royalNavy,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  PressableScale(
+                    onTap: _handleCreateSubject,
+                    child: Container(
+                      width: double.infinity,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [AppTheme.royalNavy, Color(0xFF164E7E)],
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: AppTheme.glowShadowNavy,
                       ),
-                      icon: const Icon(LucideIcons.check, size: 18),
-                      label: Text(
-                        'Create Subject (${_selectedStudentIds.length} Students)',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(LucideIcons.check, size: 18, color: Colors.white),
+                          const SizedBox(width: 9),
+                          Flexible(
+                            child: Text(
+                              'Create Subject (${_selectedStudentIds.length} Students)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14.5, color: Colors.white),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1065,7 +602,15 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: AppTheme.royalNavy),
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: AppTheme.royalNavy.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 14, color: AppTheme.royalNavy),
+        ),
         const SizedBox(width: 8),
         Flexible(
           child: Text(
@@ -1075,6 +620,8 @@ class _CreateSubjectPageState extends State<CreateSubjectPage> {
             style: GoogleFonts.plusJakartaSans(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppTheme.royalNavy),
           ),
         ),
+        const SizedBox(width: 8),
+        const DoodleUnderline(width: 30, height: 6),
       ],
     );
   }

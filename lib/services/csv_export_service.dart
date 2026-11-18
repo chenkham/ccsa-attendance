@@ -145,9 +145,11 @@ class CsvExportService {
 
     List<dynamic> headerRow = ['Sl No', 'Class Roll No', 'DU Exam Roll No', 'Student Name'];
     for (var s in sessions) {
-      headerRow.add('${dateFmt.format(s.sessionDate)} ${s.isLab ? "Lab(2h)" : "Th(1h)"}');
+      final isBaseline = s.records.any((r) => r.markedBy == 'physical_register');
+      final dateLabel = isBaseline ? 'Register Baseline' : dateFmt.format(s.sessionDate);
+      headerRow.add('$dateLabel ${s.isLab ? "Lab(2h)" : "Th(1h)"}');
     }
-    headerRow.addAll(['Total Classes', 'Delivered (Hrs)', 'Attended (Hrs)', 'Attendance %', 'Eligibility Status']);
+    headerRow.addAll(['Total Sessions', 'Delivered (Hrs)', 'Attended (Hrs)', 'Attendance %', 'Eligibility Status']);
     rows.add(headerRow);
 
     for (int i = 0; i < students.length; i++) {
@@ -156,8 +158,14 @@ class CsvExportService {
       List<dynamic> studentRow = [(i + 1).toString(), student.classRollNo, student.duExamRollNo, student.name];
 
       for (var s in sessions) {
-        final isPresent = s.records.any((r) =>
-            (r.studentId == student.id || r.studentRollNo == student.classRollNo) && r.isPresent);
+        final isPresent = s.records.any((r) {
+          final isMatch = (r.studentId == student.id) ||
+              (student.classRollNo.isNotEmpty && r.studentRollNo == student.classRollNo) ||
+              (student.name.isNotEmpty && r.studentName.trim().toLowerCase() == student.name.trim().toLowerCase()) ||
+              (student.email != null && student.email!.isNotEmpty && r.studentId.trim().toLowerCase() == student.email!.trim().toLowerCase());
+          return isMatch && r.isPresent;
+        });
+
         if (isPresent) {
           attendedHours += s.durationHours;
           studentRow.add('P');
@@ -167,7 +175,7 @@ class CsvExportService {
       }
 
       final double percentage = totalDeliveredHours > 0 ? (attendedHours / totalDeliveredHours) * 100.0 : 100.0;
-      final String eligibility = percentage >= 75.0 ? 'ELIGIBLE' : 'SHORTAGE (<75%)';
+      final String eligibility = percentage >= 80.0 ? 'ELIGIBLE' : 'SHORTAGE (<80%)';
 
       studentRow.addAll([
         sessions.length.toString(),
@@ -220,19 +228,21 @@ class CsvExportService {
     buffer.writeln('</style></head><body>');
 
     buffer.writeln('<table>');
-    buffer.writeln('<tr><td colspan="8" class="meta-title">CENTRE FOR COMPUTER SCIENCE AND APPLICATIONS (CCSA)</td></tr>');
-    buffer.writeln('<tr><td colspan="8">DIBRUGARH UNIVERSITY, ASSAM - 786004</td></tr>');
-    buffer.writeln('<tr><td colspan="8"><b>OFFICIAL ATTENDANCE FORENSIC RECORD</b></td></tr>');
-    buffer.writeln('<tr><td><b>Subject:</b></td><td colspan="3">${subject.name} (${subject.code})</td><td><b>Course & Sem:</b></td><td colspan="3">${subject.course} ${subject.semesterDisplay}</td></tr>');
-    buffer.writeln('<tr><td><b>Faculty:</b></td><td colspan="3">${subject.professorName}</td><td><b>Generated:</b></td><td colspan="3">${fullDateFmt.format(DateTime.now())}</td></tr>');
-    buffer.writeln('<tr><td colspan="8"></td></tr>');
+    buffer.writeln('<tr><td colspan="9" class="meta-title">CENTRE FOR COMPUTER SCIENCE AND APPLICATIONS (CCSA)</td></tr>');
+    buffer.writeln('<tr><td colspan="9">DIBRUGARH UNIVERSITY, ASSAM - 786004</td></tr>');
+    buffer.writeln('<tr><td colspan="9"><b>OFFICIAL ATTENDANCE FORENSIC RECORD</b></td></tr>');
+    buffer.writeln('<tr><td><b>Subject:</b></td><td colspan="3">${subject.name} (${subject.code})</td><td><b>Course & Sem:</b></td><td colspan="4">${subject.course} ${subject.semesterDisplay}</td></tr>');
+    buffer.writeln('<tr><td><b>Faculty:</b></td><td colspan="3">${subject.professorName}</td><td><b>Generated:</b></td><td colspan="4">${fullDateFmt.format(DateTime.now())}</td></tr>');
+    buffer.writeln('<tr><td colspan="9"></td></tr>');
 
     buffer.writeln('<tr>');
     buffer.writeln('<th>Sl No</th><th>Class Roll No</th><th>DU Exam Roll No</th><th>Student Name</th>');
     for (var s in sessions) {
-      buffer.writeln('<th>${dateFmt.format(s.sessionDate)}<br/><small>${s.isLab ? "Lab(2h)" : "Th(1h)"}</small></th>');
+      final isBaseline = s.records.any((r) => r.markedBy == 'physical_register');
+      final dateLabel = isBaseline ? 'Register Baseline' : dateFmt.format(s.sessionDate);
+      buffer.writeln('<th>$dateLabel<br/><small>${s.isLab ? "Lab(2h)" : "Th(1h)"}</small></th>');
     }
-    buffer.writeln('<th>Total Classes</th><th>Delivered (Hrs)</th><th>Attended (Hrs)</th><th>Attendance %</th><th>Eligibility</th>');
+    buffer.writeln('<th>Total Sessions</th><th>Delivered (Hrs)</th><th>Attended (Hrs)</th><th>Attendance %</th><th>Eligibility</th>');
     buffer.writeln('</tr>');
 
     for (int i = 0; i < students.length; i++) {
@@ -242,8 +252,14 @@ class CsvExportService {
       buffer.writeln('<td>${i + 1}</td><td>${student.classRollNo}</td><td>${student.duExamRollNo}</td><td>${student.name}</td>');
 
       for (var s in sessions) {
-        final isPresent = s.records.any((r) =>
-            (r.studentId == student.id || r.studentRollNo == student.classRollNo) && r.isPresent);
+        final isPresent = s.records.any((r) {
+          final isMatch = (r.studentId == student.id) ||
+              (student.classRollNo.isNotEmpty && r.studentRollNo == student.classRollNo) ||
+              (student.name.isNotEmpty && r.studentName.trim().toLowerCase() == student.name.trim().toLowerCase()) ||
+              (student.email != null && student.email!.isNotEmpty && r.studentId.trim().toLowerCase() == student.email!.trim().toLowerCase());
+          return isMatch && r.isPresent;
+        });
+
         if (isPresent) {
           attendedHours += s.durationHours;
           buffer.writeln('<td class="present">P</td>');
@@ -253,11 +269,11 @@ class CsvExportService {
       }
 
       final double percentage = totalDeliveredHours > 0 ? (attendedHours / totalDeliveredHours) * 100.0 : 100.0;
-      final bool isEligible = percentage >= 75.0;
+      final bool isEligible = percentage >= 80.0;
 
       buffer.writeln('<td>${sessions.length}</td>');
-      buffer.writeln('<td>${totalDeliveredHours}</td>');
-      buffer.writeln('<td>${attendedHours}</td>');
+      buffer.writeln('<td>$totalDeliveredHours</td>');
+      buffer.writeln('<td>$attendedHours</td>');
       buffer.writeln('<td>${percentage.toStringAsFixed(1)}%</td>');
       buffer.writeln('<td class="${isEligible ? "eligible" : "shortage"}">${isEligible ? "ELIGIBLE" : "SHORTAGE"}</td>');
       buffer.writeln('</tr>');
@@ -280,20 +296,63 @@ class CsvExportService {
     List<AttendanceSession> sessions = [];
     List<Student> students = [];
 
+    // 1. Fetch Students
     try {
-      sessions = await DatabaseHelper.instance.getSessionsForSubject(subject.id);
       students = await DatabaseHelper.instance.getStudentsForSubject(subject.id);
     } catch (_) {}
 
-    if (sessions.isEmpty || students.isEmpty) {
-      final cloudSess = await ApiService.instance.getFacultySessions(subjectId: subject.id);
-      if (cloudSess.isNotEmpty) sessions = cloudSess;
-
+    if (students.isEmpty) {
       final cloudStds = await ApiService.instance.getRegisteredStudents(
         course: subject.course,
         semester: subject.semester,
       );
       if (cloudStds.isNotEmpty) students = cloudStds;
+    }
+
+    // 2. Fetch Sessions
+    try {
+      sessions = await DatabaseHelper.instance.getSessionsForSubject(subject.id);
+    } catch (_) {}
+
+    if (sessions.isEmpty) {
+      final cloudSess = await ApiService.instance.getFacultySessions(subjectId: subject.id);
+      if (cloudSess.isNotEmpty) sessions = cloudSess;
+    }
+
+    // 3. Ensure full attendance records are populated for every session
+    for (var s in sessions) {
+      if (s.records.isEmpty) {
+        // Try local SQLite first
+        try {
+          final localRecs = await DatabaseHelper.instance.getRecordsForSession(s.id);
+          if (localRecs.isNotEmpty) {
+            s.records.addAll(localRecs);
+          }
+        } catch (_) {}
+
+        // If still empty, fetch authoritative records from cloud
+        if (s.records.isEmpty) {
+          try {
+            final cloudData = await ApiService.instance.getSessionDetails(s.id);
+            if (cloudData != null && cloudData['records'] is List) {
+              final rawList = cloudData['records'] as List;
+              for (var item in rawList) {
+                if (item is Map) {
+                  s.records.add(AttendanceRecord(
+                    id: item['id']?.toString() ?? s.id,
+                    sessionId: s.id,
+                    studentId: item['id']?.toString() ?? item['student_id']?.toString() ?? '',
+                    studentRollNo: item['student_roll_no']?.toString() ?? '',
+                    studentName: item['student_name']?.toString() ?? 'Student',
+                    status: (item['status']?.toString().toLowerCase() == 'present') ? 'present' : 'absent',
+                    markedBy: item['marked_by']?.toString() ?? 'dynamic_qr',
+                  ));
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
     }
 
     sessions.sort((a, b) => a.sessionDate.compareTo(b.sessionDate));

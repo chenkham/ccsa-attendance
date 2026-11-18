@@ -16,46 +16,53 @@ class AttendanceGauge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isSafe = percentage >= 75.0;
-    final Color gaugeColor = isSafe ? AppTheme.emeraldGreen : AppTheme.crimsonRose;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: percentage.clamp(0.0, 100.0)),
+      duration: AppTheme.motionSpring,
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedValue, _) {
+        final bool isSafe = animatedValue >= 80.0;
+        final Color gaugeColor = isSafe ? AppTheme.emeraldGreen : AppTheme.crimsonRose;
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        SizedBox(
-          width: size,
-          height: size,
-          child: CircularProgressIndicator(
-            value: (percentage / 100).clamp(0.0, 1.0),
-            strokeWidth: strokeWidth,
-            strokeCap: StrokeCap.round,
-            backgroundColor: AppTheme.borderLight,
-            valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
-          ),
-        ),
-        Column(
-          mainAxisSize: MainAxisSize.min,
+        return Stack(
+          alignment: Alignment.center,
           children: [
-            Text(
-              '${percentage.toStringAsFixed(1)}%',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: size * 0.19,
-                fontWeight: FontWeight.w800,
-                color: gaugeColor,
-                height: 1.1,
+            SizedBox(
+              width: size,
+              height: size,
+              child: CircularProgressIndicator(
+                value: (animatedValue / 100).clamp(0.0, 1.0),
+                strokeWidth: strokeWidth,
+                strokeCap: StrokeCap.round,
+                backgroundColor: AppTheme.borderLight,
+                valueColor: AlwaysStoppedAnimation<Color>(gaugeColor),
               ),
             ),
-            Text(
-              isSafe ? 'Eligible' : 'Shortage',
-              style: GoogleFonts.inter(
-                fontSize: size * 0.11,
-                fontWeight: FontWeight.w700,
-                color: isSafe ? const Color(0xFF047857) : AppTheme.crimsonRose,
-              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${animatedValue.toStringAsFixed(1)}%',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: size * 0.19,
+                    fontWeight: FontWeight.w800,
+                    color: gaugeColor,
+                    height: 1.1,
+                  ),
+                ),
+                Text(
+                  isSafe ? 'Eligible' : 'Shortage',
+                  style: GoogleFonts.inter(
+                    fontSize: size * 0.11,
+                    fontWeight: FontWeight.w700,
+                    color: isSafe ? const Color(0xFF047857) : AppTheme.crimsonRose,
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }

@@ -43,14 +43,33 @@ dependencies:
   shared_preferences: ^2.2.3
   geolocator: ^12.0.0
   sqflite_common_ffi_web: ^0.4.3+1
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+  image: ^4.9.2
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
-    - assets/mobilefacenet.tflite
+
+flutter_launcher_icons:
+  image_path: "assets/icons/app_icon_main.png"
+  android: true
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/app_icon_fg.png"
+  min_sdk_android: 21
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon_main.png"
+    icon_size: 48
+  web:
+    generate: true
+    image_path: "assets/icons/app_icon_main.png"
+    background_color: "#FFFFFF"
+    theme_color: "#0F2942"
